@@ -155,7 +155,7 @@ class InfiniteCanvasController extends ChangeNotifier {
     var bestZ = _nodesByQuadId[bestId]?.zIndex ?? 0;
     for (final id in ids) {
       final z = _nodesByQuadId[id]?.zIndex ?? 0;
-      if (z > bestZ || (z == bestZ && id < bestId)) {
+      if (z > bestZ || (z == bestZ && id > bestId)) {
         bestZ = z;
         bestId = id;
       }
@@ -164,6 +164,9 @@ class InfiniteCanvasController extends ChangeNotifier {
   }
 
   /// Top-most node under [world] (by [CanvasNode.zIndex]), or null.
+  ///
+  /// Same [zIndex]: higher quadtree id wins (typically added later, matching
+  /// [queryVisible] paint order).
   int? pickTopNodeAtWorld(ui.Offset world, {double epsilonPixels = 4}) {
     final cam = camera;
     final ez = epsilonPixels / cam.zoomDouble;
@@ -180,7 +183,7 @@ class InfiniteCanvasController extends ChangeNotifier {
       final zb = _nodesByQuadId[b]!.zIndex;
       final c = zb.compareTo(za);
       if (c != 0) return c;
-      return a.compareTo(b);
+      return b.compareTo(a);
     });
     return candidates.first;
   }
@@ -247,13 +250,17 @@ class InfiniteCanvasController extends ChangeNotifier {
   List<CanvasNode> queryVisible({double inflate = 32}) {
     final rect = camera.bound.inflate(inflate);
     final ids = quadTree.queryIds(rect);
-    final out = <CanvasNode>[];
+    final pairs = <(int, CanvasNode)>[];
     for (final id in ids) {
       final n = _nodesByQuadId[id];
-      if (n != null) out.add(n);
+      if (n != null) pairs.add((id, n));
     }
-    out.sort((a, b) => a.zIndex.compareTo(b.zIndex));
-    return out;
+    pairs.sort((a, b) {
+      final c = a.$2.zIndex.compareTo(b.$2.zIndex);
+      if (c != 0) return c;
+      return a.$1.compareTo(b.$1);
+    });
+    return pairs.map((p) => p.$2).toList();
   }
 
   @override

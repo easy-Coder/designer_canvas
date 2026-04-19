@@ -26,6 +26,15 @@ enum _PrimarySession {
 
 /// Default gestures: selection / marquee / handles, wheel + MMB camera, pinch,
 /// optional keyboard shortcuts.
+///
+/// **Primary hit order:** [InfiniteCanvasController.pickTopNodeAtWorld] runs
+/// first so the top-most node by [CanvasNode.zIndex] (then quad id) wins.
+/// Transform handles on the selection union run when a handle is hit and
+/// either no node is under the pointer ([pickTopNodeAtWorld] is null, e.g.
+/// rotate affordance above bounds) or the top hit is already selected. If an
+/// unselected node is on top, it wins over handles. Primary down on an
+/// unselected top node (without Shift) replaces the selection via
+/// [InfiniteCanvasController.selectSingle].
 class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
   DefaultInfiniteCanvasGestureHandler({
     this.config = const InfiniteCanvasGestureConfig(),
@@ -131,6 +140,14 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
       final cam = controller.camera;
       final world = cam.localToGlobal(e.localPosition.dx, e.localPosition.dy);
 
+      final hitId = controller.pickTopNodeAtWorld(world);
+
+      if (hitId != null &&
+          !controller.selectedQuadIds.contains(hitId) &&
+          !HardwareKeyboard.instance.isShiftPressed) {
+        controller.selectSingle(hitId);
+      }
+
       final union = controller.selectedUnionBounds;
       if (controller.selectedQuadIds.isNotEmpty && union != null) {
         final vr = cam.globalToLocalRect(union);
@@ -139,7 +156,10 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
           local: e.localPosition,
           zoom: cam.zoomDouble,
         );
-        if (handle != null) {
+        final allowHandle = handle != null &&
+            (hitId == null ||
+                controller.selectedQuadIds.contains(hitId));
+        if (allowHandle) {
           _primaryPointer = e.pointer;
           _primarySession = _PrimarySession.handleTransform;
           _primaryDownLocal = e.localPosition;
@@ -152,7 +172,6 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
         }
       }
 
-      final hitId = controller.pickTopNodeAtWorld(world);
       _primaryPointer = e.pointer;
       _primaryDownLocal = e.localPosition;
       _downQuadId = hitId;

@@ -50,6 +50,22 @@ void main() {
   });
 
   group('Selection + hit testing', () {
+    test('pickTopNodeAtWorld same zIndex prefers higher quad id', () {
+      const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
+      final ctrl = InfiniteCanvasController(worldBounds: world);
+      ctrl.camera.changeSize(const ui.Size(400, 300));
+      ctrl.camera.moveTo(ui.Offset.zero);
+      ctrl.camera.setZoomDouble(1.0);
+
+      final first = _TestNode(ui.Rect.fromLTWH(0, 0, 100, 100), zIndex: 3);
+      final second = _TestNode(ui.Rect.fromLTWH(40, 40, 100, 100), zIndex: 3);
+      final idFirst = ctrl.addNode(first);
+      final idSecond = ctrl.addNode(second);
+      expect(idSecond > idFirst, isTrue);
+      final hit = ctrl.pickTopNodeAtWorld(const ui.Offset(50, 50));
+      expect(hit, idSecond);
+    });
+
     test('pickTopNodeAtWorld prefers higher zIndex', () {
       const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
       final ctrl = InfiniteCanvasController(worldBounds: world);
@@ -106,6 +122,50 @@ void main() {
         ctrl.selectedUnionBounds,
         ui.Rect.fromLTRB(0, 0, 30, 15),
       );
+    });
+
+    test('primary down replaces selection with top z-index node', () {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
+      final ctrl = InfiniteCanvasController(worldBounds: world);
+      ctrl.camera.changeSize(const ui.Size(400, 300));
+      ctrl.camera.moveTo(ui.Offset.zero);
+      ctrl.camera.setZoomDouble(1.0);
+
+      final low = RectSpriteNode(
+        center: const ui.Offset(50, 50),
+        width: 100,
+        height: 100,
+        zIndexValue: 1,
+        color: const ui.Color(0xFF000000),
+      );
+      final high = RectSpriteNode(
+        center: const ui.Offset(50, 50),
+        width: 60,
+        height: 60,
+        zIndexValue: 10,
+        color: const ui.Color(0xFF000001),
+      );
+      final idLow = ctrl.addNode(low);
+      final idHigh = ctrl.addNode(high);
+      ctrl.setSelection({idLow}, primary: idLow);
+
+      final h = DefaultInfiniteCanvasGestureHandler(
+        config: const InfiniteCanvasGestureConfig(enableSelection: true),
+      );
+      const worldPt = ui.Offset(50, 50);
+      final local = ctrl.camera.globalToLocal(worldPt.dx, worldPt.dy);
+      h.handlePointerEvent(
+        PointerDownEvent(
+          pointer: 1,
+          position: local,
+          buttons: 1,
+        ),
+        ctrl,
+      );
+
+      expect(ctrl.primaryQuadId, idHigh);
+      expect(ctrl.selectedQuadIds, {idHigh});
     });
 
     test('SelectionHandles.hitTest hits corner knob', () {
