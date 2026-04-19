@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
+import 'canvas_tool.dart';
+import 'designer_gesture_handler.dart';
 import 'rect_node.dart';
 
 void main() {
@@ -29,6 +31,10 @@ class InfiniteCanvasDemoPage extends StatefulWidget {
 
 class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
   late final InfiniteCanvasController _controller;
+  late final ValueNotifier<CanvasTool> _tool;
+  late final InfiniteCanvasGestureConfig _gestureConfig;
+  late final DefaultInfiniteCanvasGestureHandler _defaultHandler;
+  late final DesignerGestureHandler _designerHandler;
 
   @override
   void initState() {
@@ -50,23 +56,99 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
       height: 100,
       color: const ui.Color(0xFF1565C0),
     ));
+
+    _tool = ValueNotifier(CanvasTool.select);
+    _gestureConfig = const InfiniteCanvasGestureConfig(
+      enableSelection: true,
+      enableKeyboardShortcuts: false,
+    );
+    _defaultHandler = DefaultInfiniteCanvasGestureHandler(
+      config: _gestureConfig,
+    );
+    _designerHandler = DesignerGestureHandler(
+      tool: _tool,
+      delegate: _defaultHandler,
+      gestureConfig: _gestureConfig,
+    );
   }
 
   @override
   void dispose() {
+    _tool.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  static String _toolLabel(CanvasTool t) {
+    return switch (t) {
+      CanvasTool.select => 'Select',
+      CanvasTool.rect => 'Rect',
+      CanvasTool.circle => 'Circle',
+      CanvasTool.triangle => 'Triangle',
+      CanvasTool.line => 'Line',
+      CanvasTool.text => 'Text',
+    };
+  }
+
+  static IconData _toolIcon(CanvasTool t) {
+    return switch (t) {
+      CanvasTool.select => Icons.near_me_outlined,
+      CanvasTool.rect => Icons.crop_square,
+      CanvasTool.circle => Icons.circle_outlined,
+      CanvasTool.triangle => Icons.change_history,
+      CanvasTool.line => Icons.horizontal_rule,
+      CanvasTool.text => Icons.text_fields,
+    };
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // appBar: AppBar(title: const Text('Infinite canvas')),
-      body: InfiniteCanvasView(
-        controller: _controller,
-        gestureConfig: const InfiniteCanvasGestureConfig(
-          enableSelection: true,
-        ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Material(
+            elevation: 2,
+            color: Theme.of(context).colorScheme.surfaceContainerHigh,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: ValueListenableBuilder<CanvasTool>(
+                  valueListenable: _tool,
+                  builder: (context, active, _) {
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (final t in CanvasTool.values) ...[
+                            if (t != CanvasTool.values.first)
+                              const SizedBox(width: 6),
+                            FilterChip(
+                              avatar: Icon(_toolIcon(t), size: 18),
+                              label: Text(_toolLabel(t)),
+                              selected: active == t,
+                              onSelected: (_) {
+                                _tool.value = t;
+                              },
+                            ),
+                          ],
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: InfiniteCanvasView(
+              controller: _controller,
+              gestureHandler: _designerHandler,
+              gestureConfig: _gestureConfig,
+            ),
+          ),
+        ],
       ),
     );
   }
