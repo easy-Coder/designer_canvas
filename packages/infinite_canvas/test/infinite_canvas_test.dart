@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
+import 'fixtures/visual_rect_test_node.dart';
+
 void main() {
   group('Camera', () {
     test('globalToLocal / localToGlobal round-trip', () {
@@ -57,11 +59,11 @@ void main() {
       ctrl.camera.moveTo(ui.Offset.zero);
       ctrl.camera.setZoomDouble(1.0);
 
-      final first = CanvasNode.fromAxisAlignedRect(
+      final first = VisualRectTestNode.fromAxisAlignedRect(
         const ui.Rect.fromLTWH(0, 0, 100, 100),
         zIndex: 3,
       );
-      final second = CanvasNode.fromAxisAlignedRect(
+      final second = VisualRectTestNode.fromAxisAlignedRect(
         const ui.Rect.fromLTWH(40, 40, 100, 100),
         zIndex: 3,
       );
@@ -79,11 +81,11 @@ void main() {
       ctrl.camera.moveTo(ui.Offset.zero);
       ctrl.camera.setZoomDouble(1.0);
 
-      final low = CanvasNode.fromAxisAlignedRect(
+      final low = VisualRectTestNode.fromAxisAlignedRect(
         const ui.Rect.fromLTWH(0, 0, 100, 100),
         zIndex: 1,
       );
-      final high = CanvasNode.fromAxisAlignedRect(
+      final high = VisualRectTestNode.fromAxisAlignedRect(
         const ui.Rect.fromLTWH(40, 40, 100, 100),
         zIndex: 5,
       );
@@ -98,11 +100,11 @@ void main() {
     test('applyMarquee replaces and additive union', () {
       const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
       final ctrl = InfiniteCanvasController(worldBounds: world);
-      final a = CanvasNode.fromAxisAlignedRect(
+      final a = VisualRectTestNode.fromAxisAlignedRect(
         const ui.Rect.fromLTWH(0, 0, 10, 10),
         zIndex: 1,
       );
-      final b = CanvasNode.fromAxisAlignedRect(
+      final b = VisualRectTestNode.fromAxisAlignedRect(
         const ui.Rect.fromLTWH(20, 0, 10, 10),
         zIndex: 3,
       );
@@ -131,10 +133,10 @@ void main() {
     test('selectedUnionBounds unions all selected node bounds', () {
       const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
       final ctrl = InfiniteCanvasController(worldBounds: world);
-      final a = CanvasNode.fromAxisAlignedRect(
+      final a = VisualRectTestNode.fromAxisAlignedRect(
         const ui.Rect.fromLTWH(0, 0, 10, 10),
       );
-      final b = CanvasNode.fromAxisAlignedRect(
+      final b = VisualRectTestNode.fromAxisAlignedRect(
         const ui.Rect.fromLTWH(20, 5, 10, 10),
       );
       final idA = ctrl.addNode(a);
@@ -154,14 +156,14 @@ void main() {
       ctrl.camera.moveTo(ui.Offset.zero);
       ctrl.camera.setZoomDouble(1.0);
 
-      final low = CanvasNode(
+      final low = VisualRectTestNode(
         center: const ui.Offset(50, 50),
         width: 100,
         height: 100,
         zIndex: 1,
         color: const ui.Color(0xFF000000),
       );
-      final high = CanvasNode(
+      final high = VisualRectTestNode(
         center: const ui.Offset(50, 50),
         width: 60,
         height: 60,
@@ -228,10 +230,10 @@ void main() {
       ctrl.camera.moveTo(ui.Offset.zero);
       ctrl.camera.setZoomDouble(1.0);
 
-      final inside = CanvasNode.fromAxisAlignedRect(
+      final inside = VisualRectTestNode.fromAxisAlignedRect(
         const ui.Rect.fromLTWH(-10, -10, 20, 20),
       );
-      final far = CanvasNode.fromAxisAlignedRect(
+      final far = VisualRectTestNode.fromAxisAlignedRect(
         const ui.Rect.fromLTWH(4000, 4000, 10, 10),
       );
 

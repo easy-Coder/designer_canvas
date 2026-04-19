@@ -1,0 +1,68 @@
+import 'dart:ui' as ui;
+
+import 'package:infinite_canvas/infinite_canvas.dart';
+
+/// Mirrors app `lib/rect_node.dart` draw for package-local tests.
+class VisualRectTestNode extends CanvasNode with RoundedRectCanvasMixin {
+  VisualRectTestNode({
+    required ui.Offset center,
+    required double width,
+    required double height,
+    double rotationRadians = 0,
+    required this.color,
+    this.cornerRadiusWorld = 8,
+    super.zIndex = 1,
+  }) {
+    initRoundedRectGeometry(
+      center: center,
+      width: width,
+      height: height,
+      rotationRadians: rotationRadians,
+    );
+  }
+
+  factory VisualRectTestNode.fromAxisAlignedRect(
+    ui.Rect rect, {
+    ui.Color color = const ui.Color(0x00000000),
+    double cornerRadiusWorld = 8,
+    int zIndex = 0,
+  }) {
+    return VisualRectTestNode(
+      center: rect.center,
+      width: rect.width,
+      height: rect.height,
+      color: color,
+      cornerRadiusWorld: cornerRadiusWorld,
+      zIndex: zIndex,
+    );
+  }
+
+  final ui.Color color;
+  final double cornerRadiusWorld;
+
+  @override
+  void draw(ui.Canvas canvas, CanvasPaintContext context) {
+    super.draw(canvas, context);
+    final pivot = context.camera.globalToLocal(
+      rectCenter.dx,
+      rectCenter.dy,
+    );
+    final hw = rectWidth / 2 * context.camera.zoomDouble;
+    final hh = rectHeight / 2 * context.camera.zoomDouble;
+    final rPx = cornerRadiusWorld * context.camera.zoomDouble;
+    final local = ui.RRect.fromRectXY(
+      ui.Rect.fromLTWH(-hw, -hh, hw * 2, hh * 2),
+      rPx,
+      rPx,
+    );
+
+    canvas.save();
+    canvas.translate(pivot.dx, pivot.dy);
+    canvas.rotate(rotationRadians);
+    final fill = ui.Paint()
+      ..color = color
+      ..style = ui.PaintingStyle.fill;
+    canvas.drawRRect(local, fill);
+    canvas.restore();
+  }
+}
