@@ -56,6 +56,20 @@ class InfiniteCanvasController extends ChangeNotifier {
   CanvasNode? get primaryNode =>
       _primaryQuadId != null ? _nodesByQuadId[_primaryQuadId] : null;
 
+  /// Axis-aligned union of every selected node’s [CanvasNode.bounds] in world
+  /// space. Null when nothing is selected or all ids are stale.
+  ui.Rect? get selectedUnionBounds {
+    if (_selectedQuadIds.isEmpty) return null;
+    ui.Rect? u;
+    for (final id in _selectedQuadIds) {
+      final n = _nodesByQuadId[id];
+      if (n == null) continue;
+      final r = n.bounds;
+      u = u == null ? r : u.expandToInclude(r);
+    }
+    return u;
+  }
+
   ui.Rect? get marqueeWorldRect => _marqueeWorldRect;
 
   set marqueeWorldRect(ui.Rect? value) {

@@ -15,34 +15,54 @@ enum SelectionHandleKind {
 }
 
 /// Hit-test and paint selection transform handles in **viewport** space.
+///
+/// Knob size, rotate offset, and arc stroke derive from **world-space** constants
+/// multiplied by [zoom] (same scale as [Camera.globalToLocalRect] extents), so
+/// chrome grows and shrinks on screen like scene geometry.
 final class SelectionHandles {
   SelectionHandles._();
 
-  /// Screen-space half-extent of a square handle (before zoom compensation).
-  static const double handleHalfPx = 6;
+  /// World-space half-extent of a square handle (center to edge along one axis).
+  static const double handleHalfWorld = 6;
 
-  /// Pixels above the top edge for the rotation affordance.
-  static const double rotateOffsetPx = 28;
+  /// World-space distance above the top edge to the rotation affordance center.
+  static const double rotateOffsetWorld = 20;
 
-  static double _handleSize(double zoom) => handleHalfPx * 2 / zoom.clamp(0.01, 1.0);
+  /// World-space corner radius for square knobs (RRect).
+  static const double knobCornerRadiusWorld = 1;
+
+  /// World-space stroke width for the rotation arc.
+  static const double arcStrokeWidthWorld = 1.5;
+
+  static double _knobHalfViewport(double zoom) =>
+      (handleHalfWorld * zoom).clamp(2.0, 80.0);
+
+  static double _rotateAboveTopViewport(double zoom) =>
+      (rotateOffsetWorld * zoom).clamp(4.0, 120.0);
+
+  static double _knobCornerRadiusViewport(double zoom) =>
+      (knobCornerRadiusWorld * zoom).clamp(0.5, 12.0);
 
   static ui.Rect _knob(ui.Offset c, double half) =>
       ui.Rect.fromCenter(center: c, width: half * 2, height: half * 2);
 
   /// Returns the first handle hit by [local] in viewport coordinates, or null.
+  ///
+  /// [zoom] is [Camera.zoomDouble]; geometry scales with `zoom` like world bounds.
   static SelectionHandleKind? hitTest({
     required ui.Rect viewportRect,
     required ui.Offset local,
     required double zoom,
   }) {
-    final half = _handleSize(zoom) / 2;
+    final half = _knobHalfViewport(zoom);
     final l = viewportRect.left;
     final t = viewportRect.top;
     final r = viewportRect.right;
     final b = viewportRect.bottom;
     final cx = (l + r) / 2;
 
-    final rotCenter = ui.Offset(cx, t - rotateOffsetPx / zoom);
+    final rotAbove = _rotateAboveTopViewport(zoom);
+    final rotCenter = ui.Offset(cx, t - rotAbove);
     if (ui.Offset(local.dx - rotCenter.dx, local.dy - rotCenter.dy).distance <=
         half * 1.2) {
       return SelectionHandleKind.rotate;
@@ -74,7 +94,7 @@ final class SelectionHandles {
     return null;
   }
 
-  /// Draw selection chrome for the primary node in viewport space.
+  /// Draws transform handles for [viewportRect] (selection union in pixels).
   static void paint({
     required ui.Canvas canvas,
     required ui.Rect viewportRect,
@@ -83,7 +103,8 @@ final class SelectionHandles {
     required ui.Paint knobFill,
     required ui.Paint knobStroke,
   }) {
-    final half = _handleSize(zoom) / 2;
+    final half = _knobHalfViewport(zoom);
+    final cornerR = _knobCornerRadiusViewport(zoom);
     canvas.drawRect(viewportRect, boxPaint);
 
     final l = viewportRect.left;
@@ -102,18 +123,14 @@ final class SelectionHandles {
       ui.Offset(l, b),
       ui.Offset(l, (t + b) / 2),
     ];
+    final rKnob = math.min(cornerR, half * 0.99);
     for (final c in knobs) {
-      canvas.drawRRect(
-        ui.RRect.fromRectXY(_knob(c, half), 2, 2),
-        knobFill,
-      );
-      canvas.drawRRect(
-        ui.RRect.fromRectXY(_knob(c, half), 2, 2),
-        knobStroke,
-      );
+      final rr = ui.RRect.fromRectXY(_knob(c, half), rKnob, rKnob);
+      canvas.drawRRect(rr, knobFill);
+      canvas.drawRRect(rr, knobStroke);
     }
 
-    final rot = ui.Offset(cx, t - rotateOffsetPx / zoom);
+    final rot = ui.Offset(cx, t - _rotateAboveTopViewport(zoom));
     canvas.drawCircle(rot, half * 1.1, knobFill);
     canvas.drawCircle(rot, half * 1.1, knobStroke);
 
@@ -128,7 +145,7 @@ final class SelectionHandles {
     final arcStroke = ui.Paint()
       ..color = knobStroke.color
       ..style = ui.PaintingStyle.stroke
-      ..strokeWidth = math.max(1.0, 1.5 / zoom);
+      ..strokeWidth = (arcStrokeWidthWorld * zoom).clamp(0.5, 8.0);
     canvas.drawPath(arc, arcStroke);
   }
 }

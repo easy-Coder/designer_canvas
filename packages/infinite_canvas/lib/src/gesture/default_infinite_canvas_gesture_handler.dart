@@ -124,9 +124,9 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
       final cam = controller.camera;
       final world = cam.localToGlobal(e.localPosition.dx, e.localPosition.dy);
 
-      final primaryNode = controller.primaryNode;
-      if (controller.primaryQuadId != null && primaryNode != null) {
-        final vr = cam.globalToLocalRect(primaryNode.bounds);
+      final union = controller.selectedUnionBounds;
+      if (controller.selectedQuadIds.isNotEmpty && union != null) {
+        final vr = cam.globalToLocalRect(union);
         final handle = SelectionHandles.hitTest(
           viewportRect: vr,
           local: e.localPosition,

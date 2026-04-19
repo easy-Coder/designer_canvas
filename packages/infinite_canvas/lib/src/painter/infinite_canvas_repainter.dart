@@ -103,6 +103,10 @@ class InfiniteCanvasRepainter implements RePainter {
   void _paintSelectionOverlay(ui.Canvas canvas, Camera camera) {
     final zoom = camera.zoomDouble;
 
+    const outlineWorld = 1.0;
+    const dashWorld = 8.0;
+    const gapWorld = 5.0;
+
     final marquee = controller.marqueeWorldRect;
     if (marquee != null) {
       final vr = camera.globalToLocalRect(marquee);
@@ -112,53 +116,65 @@ class InfiniteCanvasRepainter implements RePainter {
       final stroke = ui.Paint()
         ..color = const ui.Color(0xFF2196F3)
         ..style = ui.PaintingStyle.stroke
-        ..strokeWidth = (1 / zoom).clamp(0.5, 3.0);
+        ..strokeWidth = (outlineWorld * zoom).clamp(0.5, 6.0);
       canvas.drawRect(vr, fill);
       canvas.drawRect(vr, stroke);
     }
 
     final selStroke = ui.Paint()
-      ..color = const ui.Color(0xFFE91E63)
+      ..color = const ui.Color(0xFF2196F3)
       ..style = ui.PaintingStyle.stroke
-      ..strokeWidth = (1.5 / zoom).clamp(0.5, 4.0);
+      ..strokeWidth = (1.5 * zoom).clamp(0.5, 6.0);
 
     for (final id in controller.selectedQuadIds) {
       final n = controller.lookupNode(id);
       if (n == null) continue;
       final vr = camera.globalToLocalRect(n.bounds);
-      _paintDashedRect(canvas, vr, selStroke);
+      _paintDashedRect(
+        canvas,
+        vr,
+        selStroke,
+        zoom: zoom,
+        dashWorld: dashWorld,
+        gapWorld: gapWorld,
+      );
     }
 
-    final pid = controller.primaryQuadId;
-    if (pid != null) {
-      final n = controller.lookupNode(pid);
-      if (n != null) {
-        final vr = camera.globalToLocalRect(n.bounds);
-        final boxPaint = ui.Paint()
-          ..color = const ui.Color(0x00FFFFFF)
-          ..style = ui.PaintingStyle.stroke
-          ..strokeWidth = (2 / zoom).clamp(0.5, 5.0);
-        final knobFill = ui.Paint()..color = const ui.Color(0xFFFFFFFF);
-        final knobStroke = ui.Paint()
-          ..color = const ui.Color(0xFF1565C0)
-          ..style = ui.PaintingStyle.stroke
-          ..strokeWidth = (1 / zoom).clamp(0.5, 2.0);
-        SelectionHandles.paint(
-          canvas: canvas,
-          viewportRect: vr,
-          zoom: zoom,
-          boxPaint: boxPaint,
-          knobFill: knobFill,
-          knobStroke: knobStroke,
-        );
-      }
+    final union = controller.selectedUnionBounds;
+    if (union != null) {
+      final vr = camera.globalToLocalRect(union);
+      final boxPaint = ui.Paint()
+        ..color = const ui.Color(0x00FFFFFF)
+        ..style = ui.PaintingStyle.stroke
+        ..strokeWidth = (2.0 * zoom).clamp(0.5, 8.0);
+      final knobFill = ui.Paint()..color = const ui.Color(0xFFFFFFFF);
+      final knobStroke = ui.Paint()
+        ..color = const ui.Color(0xFF1565C0)
+        ..style = ui.PaintingStyle.stroke
+        ..strokeWidth = (1.0 * zoom).clamp(0.5, 4.0);
+      SelectionHandles.paint(
+        canvas: canvas,
+        viewportRect: vr,
+        zoom: zoom,
+        boxPaint: boxPaint,
+        knobFill: knobFill,
+        knobStroke: knobStroke,
+      );
     }
   }
 
-  /// Dashed stroke along [rect] (viewport space).
-  static void _paintDashedRect(ui.Canvas canvas, ui.Rect rect, ui.Paint paint) {
-    const dash = 6.0;
-    const gap = 4.0;
+  /// Dashed stroke along [rect] in viewport space; dash/gap lengths scale with
+  /// [zoom] from world-space [dashWorld] / [gapWorld].
+  static void _paintDashedRect(
+    ui.Canvas canvas,
+    ui.Rect rect,
+    ui.Paint paint, {
+    required double zoom,
+    required double dashWorld,
+    required double gapWorld,
+  }) {
+    final dash = dashWorld * zoom;
+    final gap = gapWorld * zoom;
 
     void drawDashedLine(ui.Offset a, ui.Offset b) {
       final d = b - a;

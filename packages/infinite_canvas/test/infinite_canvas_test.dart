@@ -83,6 +83,20 @@ void main() {
       expect(ctrl.primaryQuadId, idB);
     });
 
+    test('selectedUnionBounds unions all selected node bounds', () {
+      const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
+      final ctrl = InfiniteCanvasController(worldBounds: world);
+      final a = _TestNode(ui.Rect.fromLTWH(0, 0, 10, 10));
+      final b = _TestNode(ui.Rect.fromLTWH(20, 5, 10, 10));
+      final idA = ctrl.addNode(a);
+      final idB = ctrl.addNode(b);
+      ctrl.setSelection({idA, idB}, primary: idB);
+      expect(
+        ctrl.selectedUnionBounds,
+        ui.Rect.fromLTRB(0, 0, 30, 15),
+      );
+    });
+
     test('SelectionHandles.hitTest hits corner knob', () {
       const vr = ui.Rect.fromLTWH(100, 80, 200, 120);
       expect(
@@ -96,7 +110,7 @@ void main() {
       expect(
         SelectionHandles.hitTest(
           viewportRect: vr,
-          local: const ui.Offset(200, 52),
+          local: const ui.Offset(200, 60),
           zoom: 1.0,
         ),
         SelectionHandleKind.rotate,

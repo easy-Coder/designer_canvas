@@ -87,10 +87,5 @@ class _DemoRectNode extends CanvasNode {
       ui.RRect.fromRectXY(r, 8, 8),
       paint,
     );
-    final stroke = ui.Paint()
-      ..color = const ui.Color(0xFFFFFFFF)
-      ..style = ui.PaintingStyle.stroke
-      ..strokeWidth = context.hairlineStrokeWidth;
-    canvas.drawRRect(ui.RRect.fromRectXY(r, 8, 8), stroke);
   }
 }
