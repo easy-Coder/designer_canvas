@@ -24,6 +24,17 @@ class TriangleNode extends CanvasNode with RoundedRectCanvasMixin {
 
   final ui.Color color;
 
+  /// Updates equilateral triangle from center and side length (live placement).
+  void setCenterAndSide(ui.Offset center, double side) {
+    final h = side * math.sqrt(3) / 2;
+    initRoundedRectGeometry(
+      center: center,
+      width: side,
+      height: h,
+      rotationRadians: 0,
+    );
+  }
+
   List<ui.Offset> get _vertices {
     final side = rectWidth;
     final r = side / math.sqrt(3.0);

@@ -30,6 +30,8 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
 
   int? _placePointer;
   ui.Offset? _placeWorldStart;
+  CanvasTool? _placeTool;
+  int? _placeQuadId;
 
   static ui.Rect _normalizeWorldRect(ui.Offset a, ui.Offset b) {
     return ui.Rect.fromLTRB(
@@ -46,81 +48,171 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
   double _slopWorld(InfiniteCanvasController controller) =>
       gestureConfig.selectionSlopPixels / controller.camera.zoomDouble;
 
-  void _finishPlacement(
+  /// World-space size for the initial preview quad so indexing stays valid.
+  double _previewSeed(InfiniteCanvasController controller) =>
+      (1 / controller.camera.zoomDouble).clamp(1e-6, 100.0);
+
+  void _clearPlacement() {
+    _placePointer = null;
+    _placeWorldStart = null;
+    _placeTool = null;
+    _placeQuadId = null;
+  }
+
+  void _beginPreviewNode(
+    InfiniteCanvasController controller,
+    ui.Offset start,
+    CanvasTool t,
+  ) {
+    final eps = _previewSeed(controller);
+    switch (t) {
+      case CanvasTool.select:
+        break;
+      case CanvasTool.text:
+        break;
+      case CanvasTool.rect:
+        final r = ui.Rect.fromCenter(center: start, width: eps, height: eps);
+        _placeQuadId = controller.addNode(
+          RectNode.fromAxisAlignedRect(
+            r,
+            color: const ui.Color(0xFFE65100),
+            cornerRadiusWorld: 6,
+            zIndex: 2,
+          ),
+        );
+      case CanvasTool.circle:
+        _placeQuadId = controller.addNode(
+          CircleNode(
+            center: start,
+            radius: eps / 2,
+            color: const ui.Color(0xFF7B1FA2),
+            zIndex: 2,
+          ),
+        );
+      case CanvasTool.triangle:
+        _placeQuadId = controller.addNode(
+          TriangleNode(
+            center: start,
+            side: eps,
+            color: const ui.Color(0xFF00897B),
+            zIndex: 2,
+          ),
+        );
+      case CanvasTool.line:
+        _placeQuadId = controller.addNode(
+          LineNode(
+            start: start,
+            end: ui.Offset(start.dx + eps, start.dy),
+            color: const ui.Color(0xFFC62828),
+            zIndex: 2,
+          ),
+        );
+    }
+  }
+
+  void _applyPreviewGeometry(
+    InfiniteCanvasController controller,
+    ui.Offset start,
+    ui.Offset end, {
+    required bool lineFinalize,
+  }) {
+    final id = _placeQuadId;
+    final t = _placeTool;
+    if (id == null || t == null) return;
+
+    final minW = _minWorldSize(controller);
+    final node = controller.lookupNode(id);
+    if (node == null) return;
+
+    switch (t) {
+      case CanvasTool.select:
+      case CanvasTool.text:
+        break;
+      case CanvasTool.rect:
+        (node as RectNode).setAxisAlignedWorldRect(_normalizeWorldRect(start, end));
+        controller.updateNode(id);
+      case CanvasTool.circle:
+        final r = _normalizeWorldRect(start, end);
+        final radius = math.min(r.width, r.height) / 2;
+        (node as CircleNode).setCenterAndRadius(r.center, radius);
+        controller.updateNode(id);
+      case CanvasTool.triangle:
+        final r = _normalizeWorldRect(start, end);
+        final side = math.min(r.width, r.height);
+        (node as TriangleNode).setCenterAndSide(r.center, side);
+        controller.updateNode(id);
+      case CanvasTool.line:
+        var a = start;
+        var b = end;
+        if (lineFinalize && (b - a).distance < minW) {
+          b = ui.Offset(a.dx + minW, a.dy);
+        }
+        (node as LineNode).setWorldEndpoints(a, b);
+        controller.updateNode(id);
+    }
+  }
+
+  bool _previewBelowMinSize(
     InfiniteCanvasController controller,
     ui.Offset start,
     ui.Offset end,
   ) {
     final minW = _minWorldSize(controller);
-    final slop = _slopWorld(controller);
-
-    switch (tool.value) {
-      case CanvasTool.select:
-        break;
+    final t = _placeTool;
+    if (t == null) return true;
+    switch (t) {
       case CanvasTool.rect:
-        final r = _normalizeWorldRect(start, end);
-        if (r.width >= minW && r.height >= minW) {
-          controller.addNode(
-            RectNode.fromAxisAlignedRect(
-              r,
-              color: const ui.Color(0xFFE65100),
-              cornerRadiusWorld: 6,
-              zIndex: 2,
-            ),
-          );
-        }
       case CanvasTool.circle:
-        final r = _normalizeWorldRect(start, end);
-        if (r.width >= minW && r.height >= minW) {
-          final radius = math.min(r.width, r.height) / 2;
-          controller.addNode(
-            CircleNode(
-              center: r.center,
-              radius: radius,
-              color: const ui.Color(0xFF7B1FA2),
-              zIndex: 2,
-            ),
-          );
-        }
       case CanvasTool.triangle:
         final r = _normalizeWorldRect(start, end);
-        if (r.width >= minW && r.height >= minW) {
-          final side = math.min(r.width, r.height);
-          controller.addNode(
-            TriangleNode(
-              center: r.center,
-              side: side,
-              color: const ui.Color(0xFF00897B),
-              zIndex: 2,
-            ),
-          );
-        }
+        return r.width < minW || r.height < minW;
+      case CanvasTool.select:
+      case CanvasTool.text:
       case CanvasTool.line:
-        var a = start;
-        var b = end;
-        if ((b - a).distance < minW) {
-          b = ui.Offset(a.dx + minW, a.dy);
-        }
+        return false;
+    }
+  }
+
+  void _finalizePlacement(
+    InfiniteCanvasController controller,
+    ui.Offset start,
+    ui.Offset end,
+  ) {
+    final t = _placeTool;
+    final id = _placeQuadId;
+    final slop = _slopWorld(controller);
+
+    if (t == CanvasTool.text) {
+      if ((end - start).distance <= slop) {
         controller.addNode(
-          LineNode(
-            start: a,
-            end: b,
-            color: const ui.Color(0xFFC62828),
+          TextNode(
+            position: start,
+            text: 'Text',
+            fontSizeWorld: 22,
+            color: const ui.Color(0xFF37474F),
             zIndex: 2,
           ),
         );
-      case CanvasTool.text:
-        if ((end - start).distance <= slop) {
-          controller.addNode(
-            TextNode(
-              position: start,
-              text: 'Text',
-              fontSizeWorld: 22,
-              color: const ui.Color(0xFF37474F),
-              zIndex: 2,
-            ),
-          );
-        }
+      }
+      controller.requestRepaint();
+      return;
+    }
+
+    if (id == null || t == null || t == CanvasTool.select) {
+      controller.requestRepaint();
+      return;
+    }
+
+    if (t == CanvasTool.line) {
+      _applyPreviewGeometry(controller, start, end, lineFinalize: true);
+      controller.requestRepaint();
+      return;
+    }
+
+    if (_previewBelowMinSize(controller, start, end)) {
+      controller.removeNode(id);
+    } else {
+      _applyPreviewGeometry(controller, start, end, lineFinalize: false);
     }
     controller.requestRepaint();
   }
@@ -153,6 +245,10 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
         event.localPosition.dx,
         event.localPosition.dy,
       );
+      _placeTool = tool.value;
+      _placeQuadId = null;
+      final start = _placeWorldStart!;
+      _beginPreviewNode(controller, start, _placeTool!);
       return;
     }
 
@@ -167,7 +263,16 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     }
 
     if (event is PointerMoveEvent) {
-      controller.requestRepaint();
+      final start = _placeWorldStart;
+      if (start != null && _placeQuadId != null) {
+        final cur = cam.localToGlobal(
+          event.localPosition.dx,
+          event.localPosition.dy,
+        );
+        _applyPreviewGeometry(controller, start, cur, lineFinalize: false);
+      } else if (start != null && _placeTool == CanvasTool.text) {
+        controller.requestRepaint();
+      }
       return;
     }
 
@@ -178,16 +283,18 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           event.localPosition.dx,
           event.localPosition.dy,
         );
-        _finishPlacement(controller, start, upWorld);
+        _finalizePlacement(controller, start, upWorld);
       }
-      _placePointer = null;
-      _placeWorldStart = null;
+      _clearPlacement();
       return;
     }
 
     if (event is PointerCancelEvent) {
-      _placePointer = null;
-      _placeWorldStart = null;
+      final id = _placeQuadId;
+      if (id != null) {
+        controller.removeNode(id);
+      }
+      _clearPlacement();
       return;
     }
   }

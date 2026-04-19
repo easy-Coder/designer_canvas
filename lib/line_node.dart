@@ -32,6 +32,23 @@ class LineNode extends CanvasNode with RoundedRectCanvasMixin {
   final double strokeWidthWorld;
   final double hitThicknessWorld;
 
+  /// Updates segment geometry in world space (same basis as the constructor).
+  void setWorldEndpoints(ui.Offset start, ui.Offset end) {
+    final d = end - start;
+    final len = d.distance;
+    final theta = math.atan2(d.dy, d.dx);
+    final center = ui.Offset(
+      (start.dx + end.dx) / 2,
+      (start.dy + end.dy) / 2,
+    );
+    initRoundedRectGeometry(
+      center: center,
+      width: math.max(len, 1e-6),
+      height: hitThicknessWorld,
+      rotationRadians: theta,
+    );
+  }
+
   @override
   void draw(ui.Canvas canvas, CanvasPaintContext context) {
     super.draw(canvas, context);

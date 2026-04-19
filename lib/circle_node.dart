@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:infinite_canvas/infinite_canvas.dart';
@@ -21,6 +22,17 @@ class CircleNode extends CanvasNode with RoundedRectCanvasMixin {
   }
 
   final ui.Color color;
+
+  /// Updates center and radius from world space (used for live placement drag).
+  void setCenterAndRadius(ui.Offset center, double radius) {
+    final d = math.max(2 * radius, 1e-6);
+    initRoundedRectGeometry(
+      center: center,
+      width: d,
+      height: d,
+      rotationRadians: 0,
+    );
+  }
 
   @override
   void draw(ui.Canvas canvas, CanvasPaintContext context) {

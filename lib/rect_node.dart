@@ -41,6 +41,16 @@ class RectNode extends CanvasNode with RoundedRectCanvasMixin {
   final ui.Color color;
   final double cornerRadiusWorld;
 
+  /// Updates axis-aligned world geometry (used for live placement drag).
+  void setAxisAlignedWorldRect(ui.Rect r) {
+    initRoundedRectGeometry(
+      center: r.center,
+      width: r.width,
+      height: r.height,
+      rotationRadians: 0,
+    );
+  }
+
   @override
   void draw(ui.Canvas canvas, CanvasPaintContext context) {
     super.draw(canvas, context);
