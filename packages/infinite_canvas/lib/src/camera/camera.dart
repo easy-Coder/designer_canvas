@@ -122,12 +122,17 @@ class Camera with ChangeNotifier implements CameraView {
   }
 
   /// Sync viewport pixel size from the canvas.
-  bool changeSize(ui.Size size) {
+  ///
+  /// Set [notify] to false when calling from inside a paint pass (for example
+  /// [InfiniteCanvasRepainter.paint]); otherwise [notifyListeners] would run
+  /// while the composited child is painting and trigger an invalid
+  /// [RenderObject.markNeedsPaint] re-entrancy.
+  bool changeSize(ui.Size size, {bool notify = true}) {
     if (_viewportSize == size) return false;
     _viewportSize = size;
     _halfViewportSize = size / 2;
     _calculateBound();
-    notifyListeners();
+    if (notify) notifyListeners();
     return true;
   }
 

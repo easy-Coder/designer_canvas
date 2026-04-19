@@ -56,7 +56,12 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Infinite canvas')),
-      body: InfiniteCanvasView(controller: _controller),
+      body: InfiniteCanvasView(
+        controller: _controller,
+        gestureConfig: const InfiniteCanvasGestureConfig(
+          enableSelection: true,
+        ),
+      ),
     );
   }
 }

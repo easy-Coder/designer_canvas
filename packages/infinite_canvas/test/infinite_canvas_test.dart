@@ -49,6 +49,69 @@ void main() {
     });
   });
 
+  group('Selection + hit testing', () {
+    test('pickTopNodeAtWorld prefers higher zIndex', () {
+      const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
+      final ctrl = InfiniteCanvasController(worldBounds: world);
+      ctrl.camera.changeSize(const ui.Size(400, 300));
+      ctrl.camera.moveTo(ui.Offset.zero);
+      ctrl.camera.setZoomDouble(1.0);
+
+      final low = _TestNode(ui.Rect.fromLTWH(0, 0, 100, 100), zIndex: 1);
+      final high = _TestNode(ui.Rect.fromLTWH(40, 40, 100, 100), zIndex: 5);
+      ctrl.addNode(low);
+      ctrl.addNode(high);
+
+      final hit = ctrl.pickTopNodeAtWorld(const ui.Offset(50, 50));
+      expect(hit, isNotNull);
+      expect(ctrl.lookupNode(hit!)?.zIndex, 5);
+    });
+
+    test('applyMarquee replaces and additive union', () {
+      const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
+      final ctrl = InfiniteCanvasController(worldBounds: world);
+      final a = _TestNode(ui.Rect.fromLTWH(0, 0, 10, 10), zIndex: 1);
+      final b = _TestNode(ui.Rect.fromLTWH(20, 0, 10, 10), zIndex: 3);
+      final idA = ctrl.addNode(a);
+      final idB = ctrl.addNode(b);
+
+      ctrl.applyMarquee(ui.Rect.fromLTWH(-1, -1, 15, 15), additive: false);
+      expect(ctrl.selectedQuadIds, {idA});
+
+      ctrl.applyMarquee(ui.Rect.fromLTWH(15, -1, 15, 15), additive: true);
+      expect(ctrl.selectedQuadIds, {idA, idB});
+      expect(ctrl.primaryQuadId, idB);
+    });
+
+    test('SelectionHandles.hitTest hits corner knob', () {
+      const vr = ui.Rect.fromLTWH(100, 80, 200, 120);
+      expect(
+        SelectionHandles.hitTest(
+          viewportRect: vr,
+          local: const ui.Offset(100, 80),
+          zoom: 1.0,
+        ),
+        SelectionHandleKind.topLeft,
+      );
+      expect(
+        SelectionHandles.hitTest(
+          viewportRect: vr,
+          local: const ui.Offset(200, 52),
+          zoom: 1.0,
+        ),
+        SelectionHandleKind.rotate,
+      );
+      expect(
+        SelectionHandles.hitTest(
+          viewportRect: vr,
+          local: ui.Offset(vr.center.dx, vr.center.dy),
+          zoom: 1.0,
+        ),
+        isNull,
+      );
+    });
+  });
+
   group('InfiniteCanvasController + QuadTree', () {
     test('queryVisible returns nodes in inflated camera bound', () {
       const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
@@ -143,9 +206,13 @@ final class _RecordingGestureHandler extends InfiniteCanvasGestureHandler {
 }
 
 class _TestNode extends CanvasNode {
-  _TestNode(this._bounds);
+  _TestNode(this._bounds, {int zIndex = 0}) : _zIndex = zIndex;
 
   final ui.Rect _bounds;
+  final int _zIndex;
+
+  @override
+  int get zIndex => _zIndex;
 
   @override
   ui.Rect get bounds => _bounds;

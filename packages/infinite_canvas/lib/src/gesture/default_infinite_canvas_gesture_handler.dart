@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
@@ -6,12 +7,24 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../controller/infinite_canvas_controller.dart';
+import '../selection/selection_handles.dart';
 import 'infinite_canvas_gesture_config.dart';
 import 'infinite_canvas_gesture_handler.dart';
 
-/// Default pan, pinch, scroll zoom, trackpad pan/zoom, and optional keyboard shortcuts.
-///
-/// Pointer state lives on this instance (fed from [handlePointerEvent]).
+/// Same value as Flutter's `kPrimaryMouseButton` (not exported on all channels).
+const int _kPrimaryMouseButton = 0x01;
+
+enum _PrimarySession {
+  idle,
+  downEmpty,
+  downNode,
+  marquee,
+  handleNoop,
+  nodeDragNoop,
+}
+
+/// Default gestures: selection / marquee / handles, wheel + MMB camera, pinch,
+/// optional keyboard shortcuts.
 class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
   DefaultInfiniteCanvasGestureHandler({
     this.config = const InfiniteCanvasGestureConfig(),
@@ -20,8 +33,19 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
   final InfiniteCanvasGestureConfig config;
 
   final Map<int, Offset> _pointers = HashMap();
+  final Set<int> _middlePanPointers = {};
   double? _pinchStartZoom;
   double? _pinchStartSpan;
+
+  int? _primaryPointer;
+  _PrimarySession _primarySession = _PrimarySession.idle;
+  Offset? _primaryDownLocal;
+  ui.Offset? _marqueeAnchorWorld;
+  int? _downQuadId;
+
+  int? _lastTapQuadId;
+  DateTime? _lastTapTime;
+  Offset? _lastTapLocal;
 
   @override
   void handlePointerEvent(
@@ -43,9 +67,9 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
       case PointerMoveEvent e:
         _onMove(e, controller);
       case PointerUpEvent e:
-        _onUp(e);
+        _onUp(e, controller);
       case PointerCancelEvent e:
-        _onCancel(e);
+        _onCancel(e, controller);
       default:
         break;
     }
@@ -74,16 +98,68 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
     }
   }
 
+  bool _isMiddle(PointerDownEvent e) =>
+      (e.buttons & kMiddleMouseButton) != 0;
+
   void _onDown(PointerDownEvent e, InfiniteCanvasController controller) {
     _pointers[e.pointer] = e.localPosition;
+
+    if (_isMiddle(e) && config.middleMousePan) {
+      _middlePanPointers.add(e.pointer);
+      return;
+    }
+
     if (config.enablePinchZoom && _pointers.length == 2) {
       _pinchStartZoom = controller.camera.zoomDouble;
       _pinchStartSpan = _span(_pointers.values.toList());
-    }
-    if (_pointers.length != 2) {
+      _cancelPrimarySession(controller);
+    } else if (_pointers.length != 2) {
       _pinchStartZoom = null;
       _pinchStartSpan = null;
     }
+
+    if ((e.buttons & _kPrimaryMouseButton) != 0 &&
+        config.enableSelection &&
+        !_middlePanPointers.contains(e.pointer)) {
+      final cam = controller.camera;
+      final world = cam.localToGlobal(e.localPosition.dx, e.localPosition.dy);
+
+      final primaryNode = controller.primaryNode;
+      if (controller.primaryQuadId != null && primaryNode != null) {
+        final vr = cam.globalToLocalRect(primaryNode.bounds);
+        final handle = SelectionHandles.hitTest(
+          viewportRect: vr,
+          local: e.localPosition,
+          zoom: cam.zoomDouble,
+        );
+        if (handle != null) {
+          _primaryPointer = e.pointer;
+          _primarySession = _PrimarySession.handleNoop;
+          _primaryDownLocal = e.localPosition;
+          return;
+        }
+      }
+
+      final hitId = controller.pickTopNodeAtWorld(world);
+      _primaryPointer = e.pointer;
+      _primaryDownLocal = e.localPosition;
+      _downQuadId = hitId;
+      if (hitId == null) {
+        _primarySession = _PrimarySession.downEmpty;
+        _marqueeAnchorWorld = world;
+      } else {
+        _primarySession = _PrimarySession.downNode;
+      }
+    }
+  }
+
+  void _cancelPrimarySession(InfiniteCanvasController controller) {
+    _primaryPointer = null;
+    _primarySession = _PrimarySession.idle;
+    _primaryDownLocal = null;
+    _marqueeAnchorWorld = null;
+    _downQuadId = null;
+    controller.marqueeWorldRect = null;
   }
 
   void _onMove(PointerMoveEvent e, InfiniteCanvasController controller) {
@@ -92,8 +168,19 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
     _pointers[e.pointer] = e.localPosition;
     final delta = e.localPosition - prev;
 
-    if (config.enablePan &&
-        config.enablePinchZoom &&
+    if (_middlePanPointers.contains(e.pointer) && config.middleMousePan) {
+      final z = controller.camera.zoomDouble;
+      if (z > 0) {
+        controller.camera.moveTo(
+          controller.camera.position -
+              Offset(delta.dx / z, delta.dy / z),
+        );
+      }
+      return;
+    }
+
+    if (config.enablePinchZoom &&
+        config.enablePan &&
         _pointers.length == 2 &&
         _pinchStartZoom != null &&
         _pinchStartSpan != null &&
@@ -111,7 +198,45 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
       return;
     }
 
-    if (config.enablePan && _pointers.length == 1) {
+    if (config.enableSelection &&
+        e.pointer == _primaryPointer &&
+        _primarySession != _PrimarySession.idle) {
+      final cam = controller.camera;
+      final slop = config.selectionSlopPixels;
+      final moved = (_primaryDownLocal! - e.localPosition).distance;
+
+      switch (_primarySession) {
+        case _PrimarySession.handleNoop:
+        case _PrimarySession.nodeDragNoop:
+          controller.requestRepaint();
+          return;
+        case _PrimarySession.downEmpty:
+          if (moved >= slop) {
+            _primarySession = _PrimarySession.marquee;
+            final a = _marqueeAnchorWorld!;
+            final b = cam.localToGlobal(e.localPosition.dx, e.localPosition.dy);
+            controller.marqueeWorldRect = _normalizeWorldRect(a, b);
+          }
+          return;
+        case _PrimarySession.downNode:
+          if (moved >= slop) {
+            _primarySession = _PrimarySession.nodeDragNoop;
+          }
+          return;
+        case _PrimarySession.marquee:
+          final a = _marqueeAnchorWorld!;
+          final b = cam.localToGlobal(e.localPosition.dx, e.localPosition.dy);
+          controller.marqueeWorldRect = _normalizeWorldRect(a, b);
+          return;
+        case _PrimarySession.idle:
+          break;
+      }
+    }
+
+    if (!config.enableSelection &&
+        config.enablePan &&
+        _pointers.length == 1 &&
+        !_middlePanPointers.contains(e.pointer)) {
       final z = controller.camera.zoomDouble;
       if (z <= 0) return;
       final worldDelta = Offset(delta.dx / z, delta.dy / z);
@@ -119,16 +244,88 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
     }
   }
 
-  void _onUp(PointerUpEvent e) {
+  void _onUp(PointerUpEvent e, InfiniteCanvasController controller) {
+    _middlePanPointers.remove(e.pointer);
     _pointers.remove(e.pointer);
     if (_pointers.length < 2) {
       _pinchStartZoom = null;
       _pinchStartSpan = null;
     }
+
+    if (config.enableSelection && e.pointer == _primaryPointer) {
+      final slop = config.selectionSlopPixels;
+      final moved = _primaryDownLocal != null
+          ? (_primaryDownLocal! - e.localPosition).distance
+          : 0.0;
+
+      switch (_primarySession) {
+        case _PrimarySession.handleNoop:
+          controller.requestRepaint();
+          break;
+        case _PrimarySession.marquee:
+          final rect = controller.marqueeWorldRect;
+          if (rect != null && rect.width > 1e-6 && rect.height > 1e-6) {
+            final additive = HardwareKeyboard.instance.isShiftPressed;
+            controller.applyMarquee(rect, additive: additive);
+          } else {
+            controller.marqueeWorldRect = null;
+          }
+          break;
+        case _PrimarySession.downEmpty:
+          if (moved < slop) {
+            controller.clearSelection();
+          }
+          break;
+        case _PrimarySession.downNode:
+          if (moved < slop && _downQuadId != null) {
+            final id = _downQuadId!;
+            final node = controller.lookupNode(id);
+            final now = DateTime.now();
+            if (HardwareKeyboard.instance.isShiftPressed) {
+              controller.toggleInSelection(id);
+              _lastTapQuadId = null;
+              _lastTapTime = null;
+              _lastTapLocal = null;
+            } else {
+              final mergeDist = config.selectionSlopPixels * 2;
+              final closeEnough = _lastTapLocal != null &&
+                  (e.localPosition - _lastTapLocal!).distance <= mergeDist;
+              if (controller.onNodeDoubleClick != null &&
+                  node != null &&
+                  id == _lastTapQuadId &&
+                  _lastTapTime != null &&
+                  closeEnough &&
+                  now.difference(_lastTapTime!) < config.doubleClickTimeout) {
+                controller.onNodeDoubleClick!(id, node);
+                _lastTapQuadId = null;
+                _lastTapTime = null;
+                _lastTapLocal = null;
+              } else {
+                controller.selectSingle(id);
+                _lastTapQuadId = id;
+                _lastTapTime = now;
+                _lastTapLocal = e.localPosition;
+              }
+            }
+          }
+          break;
+        case _PrimarySession.nodeDragNoop:
+          controller.requestRepaint();
+          break;
+        case _PrimarySession.idle:
+          break;
+      }
+      _cancelPrimarySession(controller);
+      return;
+    }
   }
 
-  void _onCancel(PointerCancelEvent e) {
+  void _onCancel(PointerCancelEvent e, InfiniteCanvasController controller) {
+    _middlePanPointers.remove(e.pointer);
     _pointers.remove(e.pointer);
+    if (e.pointer == _primaryPointer) {
+      _cancelPrimarySession(controller);
+    }
     if (_pointers.length < 2) {
       _pinchStartZoom = null;
       _pinchStartSpan = null;
@@ -136,16 +333,39 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
   }
 
   void _onScroll(PointerScrollEvent e, InfiniteCanvasController controller) {
-    if (!config.enableScrollZoom) return;
-    final dy = e.scrollDelta.dy;
-    if (dy == 0) return;
-    final sens = config.scrollZoomSensitivity;
-    final factor = 1 + (dy > 0 ? -sens : sens);
     final cam = controller.camera;
-    final z0 = cam.zoomDouble;
-    final z1 = (z0 * factor).clamp(cam.minZoom, cam.maxZoom);
-    if (z1 == z0) return;
-    _applyZoomTowardsFocal(controller, z1, e.localPosition);
+    final z = cam.zoomDouble;
+    if (z <= 0) return;
+
+    final hw = HardwareKeyboard.instance;
+    final metaOrCtrl = hw.isMetaPressed || hw.isControlPressed;
+    final shift = hw.isShiftPressed;
+
+    if (config.enableMetaOrControlWheelZoom && metaOrCtrl) {
+      final dy = e.scrollDelta.dy;
+      if (dy == 0) return;
+      final sens = config.wheelZoomSensitivity;
+      final factor = 1 + (dy > 0 ? -sens : sens);
+      final z0 = cam.zoomDouble;
+      final z1 = (z0 * factor).clamp(cam.minZoom, cam.maxZoom);
+      if (z1 != z0) {
+        _applyZoomTowardsFocal(controller, z1, e.localPosition);
+      }
+      return;
+    }
+
+    if (config.enableShiftWheelHorizontalPan && shift) {
+      final dx = e.scrollDelta.dx != 0 ? e.scrollDelta.dx : e.scrollDelta.dy;
+      final worldDx = dx * config.wheelHorizontalSensitivity / z;
+      cam.moveTo(Offset(cam.position.dx + worldDx, cam.position.dy));
+      return;
+    }
+
+    if (config.enableWheelVerticalPan) {
+      final dy = e.scrollDelta.dy;
+      final worldDy = dy * config.wheelVerticalSensitivity / z;
+      cam.moveTo(Offset(cam.position.dx, cam.position.dy + worldDy));
+    }
   }
 
   void _applyZoomTowardsFocal(
@@ -213,6 +433,15 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
       return cam.setZoomDouble(z);
     }
     return false;
+  }
+
+  static ui.Rect _normalizeWorldRect(ui.Offset a, ui.Offset b) {
+    return ui.Rect.fromLTRB(
+      math.min(a.dx, b.dx),
+      math.min(a.dy, b.dy),
+      math.max(a.dx, b.dx),
+      math.max(a.dy, b.dy),
+    );
   }
 
   static double _span(List<Offset> pts) {

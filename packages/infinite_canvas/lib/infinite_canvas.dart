@@ -9,4 +9,5 @@ export 'src/gesture/infinite_canvas_gesture_handler.dart';
 export 'src/node/canvas_node.dart';
 export 'src/node/canvas_paint_context.dart';
 export 'src/painter/infinite_canvas_repainter.dart';
+export 'src/selection/selection_handles.dart';
 export 'src/widget/infinite_canvas_view.dart';

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
@@ -5,9 +6,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:repaint/repaint.dart';
 
+import '../camera/camera.dart';
 import '../controller/infinite_canvas_controller.dart';
 import '../gesture/infinite_canvas_gesture_handler.dart';
 import '../node/canvas_paint_context.dart';
+import '../selection/selection_handles.dart';
 
 /// [RePainter] for [InfiniteCanvasController] scene graph.
 ///
@@ -72,7 +75,10 @@ class InfiniteCanvasRepainter implements RePainter {
     _dirty = false;
     final size = box.size;
     final camera = controller.camera;
-    camera.changeSize(ui.Size(size.width, size.height));
+    camera.changeSize(
+      ui.Size(size.width, size.height),
+      notify: false,
+    );
 
     final canvas = context.canvas;
     canvas.save();
@@ -88,6 +94,94 @@ class InfiniteCanvasRepainter implements RePainter {
         canvas.restore();
       }
     }
+
+    _paintSelectionOverlay(canvas, camera);
+
     canvas.restore();
+  }
+
+  void _paintSelectionOverlay(ui.Canvas canvas, Camera camera) {
+    final zoom = camera.zoomDouble;
+
+    final marquee = controller.marqueeWorldRect;
+    if (marquee != null) {
+      final vr = camera.globalToLocalRect(marquee);
+      final fill = ui.Paint()
+        ..color = const ui.Color(0x402196F3)
+        ..style = ui.PaintingStyle.fill;
+      final stroke = ui.Paint()
+        ..color = const ui.Color(0xFF2196F3)
+        ..style = ui.PaintingStyle.stroke
+        ..strokeWidth = (1 / zoom).clamp(0.5, 3.0);
+      canvas.drawRect(vr, fill);
+      canvas.drawRect(vr, stroke);
+    }
+
+    final selStroke = ui.Paint()
+      ..color = const ui.Color(0xFFE91E63)
+      ..style = ui.PaintingStyle.stroke
+      ..strokeWidth = (1.5 / zoom).clamp(0.5, 4.0);
+
+    for (final id in controller.selectedQuadIds) {
+      final n = controller.lookupNode(id);
+      if (n == null) continue;
+      final vr = camera.globalToLocalRect(n.bounds);
+      _paintDashedRect(canvas, vr, selStroke);
+    }
+
+    final pid = controller.primaryQuadId;
+    if (pid != null) {
+      final n = controller.lookupNode(pid);
+      if (n != null) {
+        final vr = camera.globalToLocalRect(n.bounds);
+        final boxPaint = ui.Paint()
+          ..color = const ui.Color(0x00FFFFFF)
+          ..style = ui.PaintingStyle.stroke
+          ..strokeWidth = (2 / zoom).clamp(0.5, 5.0);
+        final knobFill = ui.Paint()..color = const ui.Color(0xFFFFFFFF);
+        final knobStroke = ui.Paint()
+          ..color = const ui.Color(0xFF1565C0)
+          ..style = ui.PaintingStyle.stroke
+          ..strokeWidth = (1 / zoom).clamp(0.5, 2.0);
+        SelectionHandles.paint(
+          canvas: canvas,
+          viewportRect: vr,
+          zoom: zoom,
+          boxPaint: boxPaint,
+          knobFill: knobFill,
+          knobStroke: knobStroke,
+        );
+      }
+    }
+  }
+
+  /// Dashed stroke along [rect] (viewport space).
+  static void _paintDashedRect(ui.Canvas canvas, ui.Rect rect, ui.Paint paint) {
+    const dash = 6.0;
+    const gap = 4.0;
+
+    void drawDashedLine(ui.Offset a, ui.Offset b) {
+      final d = b - a;
+      final len = d.distance;
+      if (len < 1e-9) return;
+      final dir = d / len;
+      var t = 0.0;
+      var drawDash = true;
+      while (t < len) {
+        final seg = math.min(drawDash ? dash : gap, len - t);
+        if (drawDash) {
+          final s = a + dir * t;
+          final e = a + dir * (t + seg);
+          canvas.drawLine(s, e, paint);
+        }
+        t += seg;
+        drawDash = !drawDash;
+      }
+    }
+
+    drawDashedLine(rect.topLeft, rect.topRight);
+    drawDashedLine(rect.topRight, rect.bottomRight);
+    drawDashedLine(rect.bottomRight, rect.bottomLeft);
+    drawDashedLine(rect.bottomLeft, rect.topLeft);
   }
 }

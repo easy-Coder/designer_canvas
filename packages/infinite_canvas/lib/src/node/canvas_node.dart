@@ -13,6 +13,9 @@ abstract class CanvasNode {
   /// World-space axis-aligned bounds used for culling and spatial indexing.
   ui.Rect get bounds;
 
+  /// Hit testing in world space (defaults to [bounds.contains]).
+  bool containsWorldPoint(ui.Offset world) => bounds.contains(world);
+
   /// Lower values are drawn first; higher values paint on top.
   int get zIndex => 0;
 
