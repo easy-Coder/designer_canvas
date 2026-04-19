@@ -28,6 +28,20 @@ class InfiniteCanvasController extends ChangeNotifier {
     _camera.addListener(_onCameraChanged);
   }
 
+  /// Quad id under the pointer for hover highlight (select mode). Notifies
+  /// [ChangeNotifier] listeners when changed only.
+  int? _hoveredQuadId;
+
+  int? get hoveredQuadId => _hoveredQuadId;
+
+  void setHoveredQuadId(int? id) {
+    if (_hoveredQuadId == id) return;
+    _hoveredQuadId = id;
+    notifyListeners();
+  }
+
+  void clearHover() => setHoveredQuadId(null);
+
   final bool _ownsCamera;
 
   /// Axis-aligned world extent used by the quadtree. Objects should stay
@@ -201,6 +215,9 @@ class InfiniteCanvasController extends ChangeNotifier {
     if (!_nodesByQuadId.containsKey(quadId)) return;
     quadTree.remove(quadId);
     _nodesByQuadId.remove(quadId);
+    if (_hoveredQuadId == quadId) {
+      _hoveredQuadId = null;
+    }
     _selectedQuadIds.remove(quadId);
     if (_primaryQuadId == quadId) {
       _primaryQuadId = _selectedQuadIds.isEmpty

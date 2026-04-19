@@ -121,6 +121,27 @@ class InfiniteCanvasRepainter implements RePainter {
       canvas.drawRect(vr, stroke);
     }
 
+    final hoverId = controller.hoveredQuadId;
+    if (hoverId != null &&
+        !controller.selectedQuadIds.contains(hoverId)) {
+      final hoverNode = controller.lookupNode(hoverId);
+      if (hoverNode != null) {
+        final vr = camera.globalToLocalRect(hoverNode.bounds);
+        final hoverStroke = ui.Paint()
+          ..color = const ui.Color(0xFFFF8F00)
+          ..style = ui.PaintingStyle.stroke
+          ..strokeWidth = (1.0 * zoom).clamp(0.5, 4.0);
+        _paintDashedRect(
+          canvas,
+          vr,
+          hoverStroke,
+          zoom: zoom,
+          dashWorld: dashWorld,
+          gapWorld: gapWorld,
+        );
+      }
+    }
+
     final selStroke = ui.Paint()
       ..color = const ui.Color(0xFF2196F3)
       ..style = ui.PaintingStyle.stroke

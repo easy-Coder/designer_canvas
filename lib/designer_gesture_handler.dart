@@ -231,6 +231,10 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       return;
     }
 
+    if (tool.value != CanvasTool.select) {
+      controller.clearHover();
+    }
+
     if (tool.value == CanvasTool.select) {
       delegate.handlePointerEvent(event, controller);
       return;

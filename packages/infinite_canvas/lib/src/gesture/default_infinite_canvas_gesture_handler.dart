@@ -77,6 +77,14 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
       return;
     }
 
+    if (event is PointerHoverEvent) {
+      _updateHover(event, controller);
+      return;
+    }
+    if (event is PointerMoveEvent && event.buttons == 0) {
+      _updateHover(event, controller);
+    }
+
     switch (event) {
       case PointerDownEvent e:
         _onDown(e, controller);
@@ -137,6 +145,7 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
     if ((e.buttons & _kPrimaryMouseButton) != 0 &&
         config.enableSelection &&
         !_middlePanPointers.contains(e.pointer)) {
+      controller.clearHover();
       final cam = controller.camera;
       final world = cam.localToGlobal(e.localPosition.dx, e.localPosition.dy);
 
@@ -460,6 +469,47 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
     if (_pointers.length < 2) {
       _pinchStartZoom = null;
       _pinchStartSpan = null;
+    }
+  }
+
+  void _updateHover(
+    PointerEvent event,
+    InfiniteCanvasController controller,
+  ) {
+    if (!config.enableSelection) {
+      controller.clearHover();
+      return;
+    }
+    if (_primarySession != _PrimarySession.idle) {
+      return;
+    }
+
+    final cam = controller.camera;
+    final world = cam.localToGlobal(
+      event.localPosition.dx,
+      event.localPosition.dy,
+    );
+    final hitId = controller.pickTopNodeAtWorld(world);
+
+    final union = controller.selectedUnionBounds;
+    if (controller.selectedQuadIds.isNotEmpty && union != null) {
+      final vr = cam.globalToLocalRect(union);
+      final handle = SelectionHandles.hitTest(
+        viewportRect: vr,
+        local: event.localPosition,
+        zoom: cam.zoomDouble,
+      );
+      if (handle != null &&
+          (hitId == null || controller.selectedQuadIds.contains(hitId))) {
+        controller.setHoveredQuadId(null);
+        return;
+      }
+    }
+
+    if (hitId != null) {
+      controller.setHoveredQuadId(hitId);
+    } else {
+      controller.clearHover();
     }
   }
 

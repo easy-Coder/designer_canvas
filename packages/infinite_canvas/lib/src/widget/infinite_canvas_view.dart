@@ -51,6 +51,10 @@ class _InfiniteCanvasViewState extends State<InfiniteCanvasView> {
       painter: _repainter,
       repaintBoundary: widget.repaintBoundary,
     );
-    return handler.wrap(context, widget.controller, repaint);
+    final canvas = handler.wrap(context, widget.controller, repaint);
+    return MouseRegion(
+      onExit: (_) => widget.controller.clearHover(),
+      child: canvas,
+    );
   }
 }
