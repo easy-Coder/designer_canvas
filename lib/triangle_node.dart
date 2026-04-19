@@ -3,8 +3,10 @@ import 'dart:ui' as ui;
 
 import 'package:infinite_canvas/infinite_canvas.dart';
 
-/// Equilateral triangle; [RoundedRectCanvasMixin] frame matches classic
-/// width = side, height = side * sqrt(3) / 2.
+/// Equilateral triangle inscribed in the mixin frame: `width = side`,
+/// `height = side * sqrt(3) / 2`. [center] / [rectCenter] is the triangle’s
+/// axis-aligned bounding-box center (apex toward smaller world y when
+/// [rotationRadians] is 0).
 class TriangleNode extends CanvasNode with RoundedRectCanvasMixin {
   TriangleNode({
     required ui.Offset center,
@@ -36,17 +38,23 @@ class TriangleNode extends CanvasNode with RoundedRectCanvasMixin {
   }
 
   List<ui.Offset> get _vertices {
-    final side = rectWidth;
-    final r = side / math.sqrt(3.0);
+    final w = rectWidth;
+    final h = rectHeight;
     final c = rectCenter;
     final rot = rotationRadians;
-    return List.generate(3, (i) {
-      final a = rot + i * 2 * math.pi / 3 - math.pi / 2;
-      return ui.Offset(
-        c.dx + r * math.cos(a),
-        c.dy + r * math.sin(a),
-      );
-    });
+    final cosR = math.cos(rot);
+    final sinR = math.sin(rot);
+    ui.Offset toWorld(ui.Offset local) {
+      final rx = local.dx * cosR - local.dy * sinR;
+      final ry = local.dx * sinR + local.dy * cosR;
+      return ui.Offset(c.dx + rx, c.dy + ry);
+    }
+
+    return [
+      toWorld(ui.Offset(0, -h / 2)),
+      toWorld(ui.Offset(-w / 2, h / 2)),
+      toWorld(ui.Offset(w / 2, h / 2)),
+    ];
   }
 
   @override
