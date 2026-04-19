@@ -11,6 +11,10 @@ import '../painter/infinite_canvas_repainter.dart';
 ///
 /// The [controller] instance must stay stable for the lifetime of this widget
 /// subtree (typical pattern: create the controller in a [State] object).
+///
+/// Input is routed through the `repaint` [RePainter]: pointers via
+/// [RePainter.onPointerEvent], and keyboard via [HardwareKeyboard] while the
+/// repainter is mounted (see [InfiniteCanvasRepainter]).
 class InfiniteCanvasView extends StatefulWidget {
   const InfiniteCanvasView({
     super.key,
@@ -42,6 +46,7 @@ class _InfiniteCanvasViewState extends State<InfiniteCanvasView> {
   Widget build(BuildContext context) {
     final handler = widget.gestureHandler ??
         DefaultInfiniteCanvasGestureHandler(config: widget.gestureConfig);
+    _repainter.gestureHandler = handler;
     final repaint = RePaint(
       painter: _repainter,
       repaintBoundary: widget.repaintBoundary,

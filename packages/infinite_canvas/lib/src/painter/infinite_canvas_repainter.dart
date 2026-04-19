@@ -1,24 +1,38 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:repaint/repaint.dart';
 
 import '../controller/infinite_canvas_controller.dart';
+import '../gesture/infinite_canvas_gesture_handler.dart';
 import '../node/canvas_paint_context.dart';
 
 /// [RePainter] for [InfiniteCanvasController] scene graph.
 ///
-/// Repaints when [InfiniteCanvasController] notifies. Pointer input is
-/// expected from an outer [InfiniteCanvasGestureHandler] wrapper; this
-/// painter’s [onPointerEvent] is a no-op by default.
+/// Pointers: [RePaintBox] calls [onPointerEvent], which forwards to
+/// [gestureHandler.handlePointerEvent].
+///
+/// Keyboard: [mount] registers [HardwareKeyboard.instance.addHandler] and
+/// [unmount] removes it; events go to [gestureHandler.handleKeyEvent].
 class InfiniteCanvasRepainter implements RePainter {
   InfiniteCanvasRepainter(this.controller);
 
   final InfiniteCanvasController controller;
 
+  /// Updated by [InfiniteCanvasView] each build before [RePaint] paints.
+  InfiniteCanvasGestureHandler gestureHandler =
+      const NoopInfiniteCanvasGestureHandler();
+
   RePaintBox? _box;
   bool _dirty = true;
+
+  late final KeyEventCallback _hardwareKeyboardHandler = _onHardwareKey;
+
+  bool _onHardwareKey(KeyEvent event) {
+    return gestureHandler.handleKeyEvent(event, controller);
+  }
 
   void _onController() {
     _dirty = true;
@@ -29,10 +43,12 @@ class InfiniteCanvasRepainter implements RePainter {
   void mount(RePaintBox box, PipelineOwner owner) {
     _box = box;
     controller.addListener(_onController);
+    HardwareKeyboard.instance.addHandler(_hardwareKeyboardHandler);
   }
 
   @override
   void unmount() {
+    HardwareKeyboard.instance.removeHandler(_hardwareKeyboardHandler);
     controller.removeListener(_onController);
     _box = null;
   }
@@ -47,7 +63,9 @@ class InfiniteCanvasRepainter implements RePainter {
   bool get needsPaint => _dirty;
 
   @override
-  void onPointerEvent(PointerEvent event) {}
+  void onPointerEvent(PointerEvent event) {
+    gestureHandler.handlePointerEvent(event, controller);
+  }
 
   @override
   void paint(RePaintBox box, PaintingContext context) {

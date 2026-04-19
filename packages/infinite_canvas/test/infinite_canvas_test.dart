@@ -1,5 +1,7 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
@@ -67,6 +69,77 @@ void main() {
       expect(visible.first, inside);
     });
   });
+
+  group('InfiniteCanvasRepainter input', () {
+    test('onPointerEvent forwards to gestureHandler', () {
+      const world = ui.Rect.fromLTWH(-1000, -1000, 2000, 2000);
+      final ctrl = InfiniteCanvasController(worldBounds: world);
+      final repainter = InfiniteCanvasRepainter(ctrl);
+      final recorder = _RecordingGestureHandler();
+      repainter.gestureHandler = recorder;
+
+      final down = PointerDownEvent(
+        pointer: 1,
+        position: const ui.Offset(10, 20),
+      );
+      repainter.onPointerEvent(down);
+
+      expect(recorder.pointerEvents, hasLength(1));
+      expect(recorder.pointerEvents.first, same(down));
+    });
+
+    test('Default handler keyboard shortcuts when disabled', () {
+      const world = ui.Rect.fromLTWH(-1000, -1000, 2000, 2000);
+      final ctrl = InfiniteCanvasController(worldBounds: world);
+      final h = DefaultInfiniteCanvasGestureHandler(
+        config: const InfiniteCanvasGestureConfig(
+          enableKeyboardShortcuts: false,
+        ),
+      );
+      final ev = KeyDownEvent(
+        physicalKey: PhysicalKeyboardKey.arrowLeft,
+        logicalKey: LogicalKeyboardKey.arrowLeft,
+        timeStamp: Duration.zero,
+        deviceType: ui.KeyEventDeviceType.keyboard,
+      );
+      expect(h.handleKeyEvent(ev, ctrl), isFalse);
+    });
+
+    test('Default handler keyboard pan when enabled', () {
+      const world = ui.Rect.fromLTWH(-1000, -1000, 2000, 2000);
+      final ctrl = InfiniteCanvasController(worldBounds: world);
+      ctrl.camera.moveTo(const ui.Offset(100, 100));
+      final h = DefaultInfiniteCanvasGestureHandler(
+        config: const InfiniteCanvasGestureConfig(
+          enableKeyboardShortcuts: true,
+          enablePan: true,
+          keyboardPanStepWorld: 10,
+        ),
+      );
+      final ev = KeyDownEvent(
+        physicalKey: PhysicalKeyboardKey.arrowLeft,
+        logicalKey: LogicalKeyboardKey.arrowLeft,
+        timeStamp: Duration.zero,
+        deviceType: ui.KeyEventDeviceType.keyboard,
+      );
+      expect(h.handleKeyEvent(ev, ctrl), isTrue);
+      expect(ctrl.camera.position.dx, 90);
+    });
+  });
+}
+
+final class _RecordingGestureHandler extends InfiniteCanvasGestureHandler {
+  _RecordingGestureHandler();
+
+  final List<PointerEvent> pointerEvents = [];
+
+  @override
+  void handlePointerEvent(
+    PointerEvent event,
+    InfiniteCanvasController controller,
+  ) {
+    pointerEvents.add(event);
+  }
 }
 
 class _TestNode extends CanvasNode {
