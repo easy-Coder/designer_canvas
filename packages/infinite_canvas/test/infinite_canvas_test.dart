@@ -57,8 +57,14 @@ void main() {
       ctrl.camera.moveTo(ui.Offset.zero);
       ctrl.camera.setZoomDouble(1.0);
 
-      final first = _TestNode(ui.Rect.fromLTWH(0, 0, 100, 100), zIndex: 3);
-      final second = _TestNode(ui.Rect.fromLTWH(40, 40, 100, 100), zIndex: 3);
+      final first = CanvasNode.fromAxisAlignedRect(
+        const ui.Rect.fromLTWH(0, 0, 100, 100),
+        zIndex: 3,
+      );
+      final second = CanvasNode.fromAxisAlignedRect(
+        const ui.Rect.fromLTWH(40, 40, 100, 100),
+        zIndex: 3,
+      );
       final idFirst = ctrl.addNode(first);
       final idSecond = ctrl.addNode(second);
       expect(idSecond > idFirst, isTrue);
@@ -73,8 +79,14 @@ void main() {
       ctrl.camera.moveTo(ui.Offset.zero);
       ctrl.camera.setZoomDouble(1.0);
 
-      final low = _TestNode(ui.Rect.fromLTWH(0, 0, 100, 100), zIndex: 1);
-      final high = _TestNode(ui.Rect.fromLTWH(40, 40, 100, 100), zIndex: 5);
+      final low = CanvasNode.fromAxisAlignedRect(
+        const ui.Rect.fromLTWH(0, 0, 100, 100),
+        zIndex: 1,
+      );
+      final high = CanvasNode.fromAxisAlignedRect(
+        const ui.Rect.fromLTWH(40, 40, 100, 100),
+        zIndex: 5,
+      );
       ctrl.addNode(low);
       ctrl.addNode(high);
 
@@ -86,8 +98,14 @@ void main() {
     test('applyMarquee replaces and additive union', () {
       const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
       final ctrl = InfiniteCanvasController(worldBounds: world);
-      final a = _TestNode(ui.Rect.fromLTWH(0, 0, 10, 10), zIndex: 1);
-      final b = _TestNode(ui.Rect.fromLTWH(20, 0, 10, 10), zIndex: 3);
+      final a = CanvasNode.fromAxisAlignedRect(
+        const ui.Rect.fromLTWH(0, 0, 10, 10),
+        zIndex: 1,
+      );
+      final b = CanvasNode.fromAxisAlignedRect(
+        const ui.Rect.fromLTWH(20, 0, 10, 10),
+        zIndex: 3,
+      );
       final idA = ctrl.addNode(a);
       final idB = ctrl.addNode(b);
 
@@ -113,8 +131,12 @@ void main() {
     test('selectedUnionBounds unions all selected node bounds', () {
       const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
       final ctrl = InfiniteCanvasController(worldBounds: world);
-      final a = _TestNode(ui.Rect.fromLTWH(0, 0, 10, 10));
-      final b = _TestNode(ui.Rect.fromLTWH(20, 5, 10, 10));
+      final a = CanvasNode.fromAxisAlignedRect(
+        const ui.Rect.fromLTWH(0, 0, 10, 10),
+      );
+      final b = CanvasNode.fromAxisAlignedRect(
+        const ui.Rect.fromLTWH(20, 5, 10, 10),
+      );
       final idA = ctrl.addNode(a);
       final idB = ctrl.addNode(b);
       ctrl.setSelection({idA, idB}, primary: idB);
@@ -132,18 +154,18 @@ void main() {
       ctrl.camera.moveTo(ui.Offset.zero);
       ctrl.camera.setZoomDouble(1.0);
 
-      final low = RectSpriteNode(
+      final low = CanvasNode(
         center: const ui.Offset(50, 50),
         width: 100,
         height: 100,
-        zIndexValue: 1,
+        zIndex: 1,
         color: const ui.Color(0xFF000000),
       );
-      final high = RectSpriteNode(
+      final high = CanvasNode(
         center: const ui.Offset(50, 50),
         width: 60,
         height: 60,
-        zIndexValue: 10,
+        zIndex: 10,
         color: const ui.Color(0xFF000001),
       );
       final idLow = ctrl.addNode(low);
@@ -206,8 +228,12 @@ void main() {
       ctrl.camera.moveTo(ui.Offset.zero);
       ctrl.camera.setZoomDouble(1.0);
 
-      final inside = _TestNode(ui.Rect.fromLTWH(-10, -10, 20, 20));
-      final far = _TestNode(ui.Rect.fromLTWH(4000, 4000, 10, 10));
+      final inside = CanvasNode.fromAxisAlignedRect(
+        const ui.Rect.fromLTWH(-10, -10, 20, 20),
+      );
+      final far = CanvasNode.fromAxisAlignedRect(
+        const ui.Rect.fromLTWH(4000, 4000, 10, 10),
+      );
 
       ctrl.addNode(inside);
       ctrl.addNode(far);
@@ -288,20 +314,4 @@ final class _RecordingGestureHandler extends InfiniteCanvasGestureHandler {
   ) {
     pointerEvents.add(event);
   }
-}
-
-class _TestNode extends CanvasNode {
-  _TestNode(this._bounds, {int zIndex = 0}) : _zIndex = zIndex;
-
-  final ui.Rect _bounds;
-  final int _zIndex;
-
-  @override
-  int get zIndex => _zIndex;
-
-  @override
-  ui.Rect get bounds => _bounds;
-
-  @override
-  void draw(ui.Canvas canvas, CanvasPaintContext context) {}
 }

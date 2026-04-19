@@ -36,13 +36,13 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
     _controller.camera.changeSize(const ui.Size(800, 600));
     _controller.camera.moveTo(ui.Offset.zero);
     _controller.camera.setZoomDouble(0.35);
-    _controller.addNode(RectSpriteNode(
+    _controller.addNode(CanvasNode(
       center: ui.Offset.zero,
       width: 240,
       height: 160,
       color: const ui.Color(0xFF2E7D32),
     ));
-    _controller.addNode(RectSpriteNode(
+    _controller.addNode(CanvasNode(
       center: const ui.Offset(130, 90),
       width: 100,
       height: 100,
