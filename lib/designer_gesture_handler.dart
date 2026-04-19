@@ -184,7 +184,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
 
     if (t == CanvasTool.text) {
       if ((end - start).distance <= slop) {
-        controller.addNode(
+        final newId = controller.addNode(
           TextNode(
             position: start,
             text: 'Text',
@@ -193,6 +193,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
             zIndex: 2,
           ),
         );
+        controller.selectSingle(newId);
       }
       controller.requestRepaint();
       return;
@@ -205,6 +206,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
 
     if (t == CanvasTool.line) {
       _applyPreviewGeometry(controller, start, end, lineFinalize: true);
+      controller.selectSingle(id);
       controller.requestRepaint();
       return;
     }
@@ -213,6 +215,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       controller.removeNode(id);
     } else {
       _applyPreviewGeometry(controller, start, end, lineFinalize: false);
+      controller.selectSingle(id);
     }
     controller.requestRepaint();
   }
