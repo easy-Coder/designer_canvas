@@ -22,8 +22,9 @@ import 'canvas_paint_context.dart';
 /// baseline). Non-rect shapes should map that AABB change onto their own
 /// parameters (e.g. uniform scale for a circle from union width/height ratios).
 ///
-/// For axis-aligned rect geometry and transforms, use [RoundedRectCanvasMixin]
-/// and implement drawing in the app.
+/// Shared axis-aligned frame geometry (with rotation) and transforms (no
+/// painting): [RoundedRectCanvasMixin]. Subclasses implement [draw] for
+/// different visuals inside the same world-space frame.
 abstract class CanvasNode {
   CanvasNode({this.zIndex = 0});
 
