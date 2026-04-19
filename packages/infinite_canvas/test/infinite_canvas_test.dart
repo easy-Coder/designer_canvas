@@ -83,6 +83,17 @@ void main() {
       expect(ctrl.primaryQuadId, idB);
     });
 
+    test('remapRectInsideUnion maps fractions', () {
+      const oldU = ui.Rect.fromLTWH(0, 0, 100, 100);
+      const newU = ui.Rect.fromLTWH(10, 20, 200, 50);
+      const inner = ui.Rect.fromLTWH(10, 10, 20, 30);
+      final out = remapRectInsideUnion(inner, oldU, newU);
+      expect(out.left, 10 + 10 / 100 * 200);
+      expect(out.top, 20 + 10 / 100 * 50);
+      expect(out.width, 20 / 100 * 200);
+      expect(out.height, 30 / 100 * 50);
+    });
+
     test('selectedUnionBounds unions all selected node bounds', () {
       const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
       final ctrl = InfiniteCanvasController(worldBounds: world);

@@ -223,6 +223,25 @@ class InfiniteCanvasController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Reindexes many nodes after geometry changes, then notifies once.
+  void relayoutNodes(Iterable<int> quadIds) {
+    var any = false;
+    for (final id in quadIds) {
+      final node = _nodesByQuadId[id];
+      if (node == null) continue;
+      final r = node.bounds;
+      quadTree.move(
+        id,
+        r.left,
+        r.top,
+        width: r.width,
+        height: r.height,
+      );
+      any = true;
+    }
+    if (any) notifyListeners();
+  }
+
   /// Nodes whose bounds intersect the visible world rect, optionally inflated
   /// to reduce edge pop-in (see PlugFox article).
   List<CanvasNode> queryVisible({double inflate = 32}) {

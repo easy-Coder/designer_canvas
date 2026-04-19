@@ -16,6 +16,8 @@ class InfiniteCanvasGestureConfig {
     this.enableKeyboardShortcuts = false,
     this.keyboardPanStepWorld = 80,
     this.keyboardZoomStep = 0.08,
+    this.enableNodeTransform = true,
+    this.minUnionSizeWorld = 4.0,
   });
 
   /// When true, primary pointer selects / deselects / marquees on empty canvas;
@@ -62,4 +64,11 @@ class InfiniteCanvasGestureConfig {
 
   /// Added/subtracted from [Camera.zoomDouble] per +/- key step (clamped).
   final double keyboardZoomStep;
+
+  /// When true with [enableSelection], dragging nodes and transform handles
+  /// mutates node geometry ([CanvasNode.translateWorld], etc.).
+  final bool enableNodeTransform;
+
+  /// Minimum width/height of the selection union during handle resize (world).
+  final double minUnionSizeWorld;
 }

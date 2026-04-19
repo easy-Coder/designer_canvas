@@ -36,12 +36,16 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
     _controller.camera.changeSize(const ui.Size(800, 600));
     _controller.camera.moveTo(ui.Offset.zero);
     _controller.camera.setZoomDouble(0.35);
-    _controller.addNode(_DemoRectNode(
-      bounds: ui.Rect.fromLTWH(-120, -80, 240, 160),
+    _controller.addNode(RectSpriteNode(
+      center: ui.Offset.zero,
+      width: 240,
+      height: 160,
       color: const ui.Color(0xFF2E7D32),
     ));
-    _controller.addNode(_DemoRectNode(
-      bounds: ui.Rect.fromLTWH(80, 40, 100, 100),
+    _controller.addNode(RectSpriteNode(
+      center: const ui.Offset(130, 90),
+      width: 100,
+      height: 100,
       color: const ui.Color(0xFF1565C0),
     ));
   }
@@ -62,30 +66,6 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
           enableSelection: true,
         ),
       ),
-    );
-  }
-}
-
-class _DemoRectNode extends CanvasNode {
-  _DemoRectNode({required this.bounds, required this.color});
-
-  @override
-  final ui.Rect bounds;
-
-  final ui.Color color;
-
-  @override
-  int get zIndex => 1;
-
-  @override
-  void draw(ui.Canvas canvas, CanvasPaintContext context) {
-    final r = context.worldRectToViewport(bounds);
-    final paint = ui.Paint()
-      ..color = color
-      ..style = ui.PaintingStyle.fill;
-    canvas.drawRRect(
-      ui.RRect.fromRectXY(r, 8, 8),
-      paint,
     );
   }
 }

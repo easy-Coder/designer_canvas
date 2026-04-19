@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 
 import '../controller/infinite_canvas_controller.dart';
 import '../selection/selection_handles.dart';
+import '../util/transform_union_geometry.dart';
 import 'infinite_canvas_gesture_config.dart';
 import 'infinite_canvas_gesture_handler.dart';
 
@@ -19,8 +20,8 @@ enum _PrimarySession {
   downEmpty,
   downNode,
   marquee,
-  handleNoop,
-  nodeDragNoop,
+  handleTransform,
+  nodeDrag,
 }
 
 /// Default gestures: selection / marquee / handles, wheel + MMB camera, pinch,
@@ -46,6 +47,12 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
   int? _lastTapQuadId;
   DateTime? _lastTapTime;
   Offset? _lastTapLocal;
+
+  SelectionHandleKind? _activeHandle;
+  bool _transformBaselinePrepared = false;
+  ui.Rect? _transformStartUnion;
+  Map<int, ui.Rect>? _boundsSnapshot;
+  ui.Offset? _rotatePointerWorldLast;
 
   @override
   void handlePointerEvent(
@@ -134,8 +141,13 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
         );
         if (handle != null) {
           _primaryPointer = e.pointer;
-          _primarySession = _PrimarySession.handleNoop;
+          _primarySession = _PrimarySession.handleTransform;
           _primaryDownLocal = e.localPosition;
+          _activeHandle = handle;
+          _transformBaselinePrepared = false;
+          _transformStartUnion = null;
+          _boundsSnapshot = null;
+          _rotatePointerWorldLast = null;
           return;
         }
       }
@@ -154,12 +166,44 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
   }
 
   void _cancelPrimarySession(InfiniteCanvasController controller) {
+    _endTransformSessions(controller);
+    _activeHandle = null;
+    _transformBaselinePrepared = false;
+    _transformStartUnion = null;
+    _boundsSnapshot = null;
+    _rotatePointerWorldLast = null;
     _primaryPointer = null;
     _primarySession = _PrimarySession.idle;
     _primaryDownLocal = null;
     _marqueeAnchorWorld = null;
     _downQuadId = null;
     controller.marqueeWorldRect = null;
+  }
+
+  void _endTransformSessions(InfiniteCanvasController controller) {
+    for (final id in controller.selectedQuadIds) {
+      controller.lookupNode(id)?.endTransformSession();
+    }
+  }
+
+  void _prepareTransformBaseline(InfiniteCanvasController controller) {
+    if (_transformBaselinePrepared) return;
+    final union = controller.selectedUnionBounds;
+    if (union == null) {
+      _transformBaselinePrepared = true;
+      return;
+    }
+    _transformBaselinePrepared = true;
+    _transformStartUnion = union;
+    _boundsSnapshot = {
+      for (final id in controller.selectedQuadIds)
+        id: controller.lookupNode(id)!.bounds,
+    };
+    if (_activeHandle != SelectionHandleKind.rotate) {
+      for (final id in controller.selectedQuadIds) {
+        controller.lookupNode(id)?.beginTransformSession();
+      }
+    }
   }
 
   void _onMove(PointerMoveEvent e, InfiniteCanvasController controller) {
@@ -206,9 +250,77 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
       final moved = (_primaryDownLocal! - e.localPosition).distance;
 
       switch (_primarySession) {
-        case _PrimarySession.handleNoop:
-        case _PrimarySession.nodeDragNoop:
-          controller.requestRepaint();
+        case _PrimarySession.handleTransform:
+          if (!config.enableNodeTransform) {
+            controller.requestRepaint();
+            return;
+          }
+          if (moved >= slop) {
+            _prepareTransformBaseline(controller);
+          }
+          if (!_transformBaselinePrepared ||
+              _transformStartUnion == null ||
+              _boundsSnapshot == null ||
+              _activeHandle == null) {
+            controller.requestRepaint();
+            return;
+          }
+          final pointerWorld = cam.localToGlobal(
+            e.localPosition.dx,
+            e.localPosition.dy,
+          );
+          if (_activeHandle == SelectionHandleKind.rotate) {
+            final center = _transformStartUnion!.center;
+            if (_rotatePointerWorldLast == null) {
+              _rotatePointerWorldLast = pointerWorld;
+              return;
+            }
+            final v0 = _rotatePointerWorldLast! - center;
+            final v1 = pointerWorld - center;
+            if (v0.distance > 1e-9 && v1.distance > 1e-9) {
+              final cross = v0.dx * v1.dy - v0.dy * v1.dx;
+              final dot = v0.dx * v1.dx + v0.dy * v1.dy;
+              final delta = math.atan2(cross, dot);
+              for (final id in controller.selectedQuadIds) {
+                controller.lookupNode(id)?.rotateWorldAround(center, delta);
+              }
+              controller.relayoutNodes(controller.selectedQuadIds);
+            }
+            _rotatePointerWorldLast = pointerWorld;
+            return;
+          }
+          final newUnion = unionForHandleDrag(
+            kind: _activeHandle!,
+            startUnion: _transformStartUnion!,
+            pointerWorld: pointerWorld,
+            minWidth: config.minUnionSizeWorld,
+            minHeight: config.minUnionSizeWorld,
+          );
+          for (final id in controller.selectedQuadIds) {
+            final snap = _boundsSnapshot![id];
+            if (snap == null) continue;
+            final n = controller.lookupNode(id);
+            n?.remapBoundsInUnion(snap, _transformStartUnion!, newUnion);
+          }
+          controller.relayoutNodes(controller.selectedQuadIds);
+          return;
+        case _PrimarySession.nodeDrag:
+          if (!config.enableNodeTransform) {
+            controller.requestRepaint();
+            return;
+          }
+          final z = cam.zoomDouble;
+          if (z <= 0) return;
+          final worldDelta = ui.Offset(delta.dx / z, delta.dy / z);
+          final hit = _downQuadId;
+          if (hit == null) return;
+          final targets = controller.selectedQuadIds.contains(hit)
+              ? controller.selectedQuadIds
+              : <int>{hit};
+          for (final id in targets) {
+            controller.lookupNode(id)?.translateWorld(worldDelta);
+          }
+          controller.relayoutNodes(targets);
           return;
         case _PrimarySession.downEmpty:
           if (moved >= slop) {
@@ -220,7 +332,7 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
           return;
         case _PrimarySession.downNode:
           if (moved >= slop) {
-            _primarySession = _PrimarySession.nodeDragNoop;
+            _primarySession = _PrimarySession.nodeDrag;
           }
           return;
         case _PrimarySession.marquee:
@@ -259,7 +371,7 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
           : 0.0;
 
       switch (_primarySession) {
-        case _PrimarySession.handleNoop:
+        case _PrimarySession.handleTransform:
           controller.requestRepaint();
           break;
         case _PrimarySession.marquee:
@@ -309,7 +421,7 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
             }
           }
           break;
-        case _PrimarySession.nodeDragNoop:
+        case _PrimarySession.nodeDrag:
           controller.requestRepaint();
           break;
         case _PrimarySession.idle:
