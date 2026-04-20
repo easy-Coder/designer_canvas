@@ -69,7 +69,7 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
     super.draw(canvas, context);
     if (isEditing) return;
     final z = context.camera.zoomDouble;
-    final layoutSize = (rectHeight / 1.35).clamp(4.0, 512.0);
+    final layoutSize = fontSizeWorld.clamp(4.0, 512.0);
     final tp = TextPainter(
       text: TextSpan(
         text: _text,

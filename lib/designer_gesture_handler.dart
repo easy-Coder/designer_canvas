@@ -454,7 +454,7 @@ class _TextEditOverlayState extends State<_TextEditOverlay> {
     final worldBounds = widget.node.bounds;
     final viewRect = cam.globalToLocalRect(worldBounds);
 
-    final fontSize = viewRect.height / 1.35;
+    final fontSize = widget.node.fontSizeWorld * cam.zoomDouble;
 
     return Positioned(
       left: viewRect.left,
