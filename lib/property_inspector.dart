@@ -98,11 +98,6 @@ class PropertyInspector extends StatelessWidget {
                     icon: Icon(Icons.format_align_right),
                     label: Text('Right'),
                   ),
-                  ButtonSegment(
-                    value: TextAlign.justify,
-                    icon: Icon(Icons.format_align_justify),
-                    label: Text('Justify'),
-                  ),
                 ],
                 selected: {node.textAlign},
                 onSelectionChanged: (selection) {

@@ -14,7 +14,7 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
     required String text,
     this.fontSizeWorld = 18,
     required this.color,
-    this.textAlign = TextAlign.start,
+    this.textAlign = TextAlign.left,
     this.verticalAlign = TextNodeVerticalAlign.top,
     this.backgroundColor,
     this.backgroundCornerRadiusWorld = 0,
@@ -90,7 +90,10 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
       ),
       textDirection: TextDirection.ltr,
       textAlign: textAlign,
-    )..layout(maxWidth: rectWidth * z);
+    )..layout(
+        minWidth: rectWidth * z,
+        maxWidth: rectWidth * z,
+      );
     final tl = bounds.topLeft;
     final localTL = context.camera.globalToLocal(tl.dx, tl.dy);
     final frameHeightPx = rectHeight * z;
