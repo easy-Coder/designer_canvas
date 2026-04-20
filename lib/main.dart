@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
 import 'canvas_tool.dart';
+import 'designer_shell.dart';
 import 'designer_gesture_handler.dart';
 import 'rect_node.dart';
 import 'text_node.dart';
@@ -17,7 +18,10 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFE65100)),
+      ),
       home: InfiniteCanvasDemoPage(),
     );
   }
@@ -89,76 +93,16 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
     super.dispose();
   }
 
-  static String _toolLabel(CanvasTool t) {
-    return switch (t) {
-      CanvasTool.select => 'Select',
-      CanvasTool.rect => 'Rect',
-      CanvasTool.circle => 'Circle',
-      CanvasTool.triangle => 'Triangle',
-      CanvasTool.line => 'Line',
-      CanvasTool.text => 'Text',
-    };
-  }
-
-  static IconData _toolIcon(CanvasTool t) {
-    return switch (t) {
-      CanvasTool.select => Icons.near_me_outlined,
-      CanvasTool.rect => Icons.crop_square,
-      CanvasTool.circle => Icons.circle_outlined,
-      CanvasTool.triangle => Icons.change_history,
-      CanvasTool.line => Icons.horizontal_rule,
-      CanvasTool.text => Icons.text_fields,
-    };
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Material(
-            elevation: 2,
-            color: Theme.of(context).colorScheme.surfaceContainerHigh,
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                child: ValueListenableBuilder<CanvasTool>(
-                  valueListenable: _tool,
-                  builder: (context, active, _) {
-                    return SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          for (final t in CanvasTool.values) ...[
-                            if (t != CanvasTool.values.first)
-                              const SizedBox(width: 6),
-                            FilterChip(
-                              avatar: Icon(_toolIcon(t), size: 18),
-                              label: Text(_toolLabel(t)),
-                              selected: active == t,
-                              onSelected: (_) {
-                                _tool.value = t;
-                              },
-                            ),
-                          ],
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: InfiniteCanvasView(
-              controller: _controller,
-              gestureHandler: _designerHandler,
-              gestureConfig: _gestureConfig,
-            ),
-          ),
-        ],
+      body: SafeArea(
+        child: DesignerShell(
+          controller: _controller,
+          tool: _tool,
+          gestureConfig: _gestureConfig,
+          gestureHandler: _designerHandler,
+        ),
       ),
     );
   }

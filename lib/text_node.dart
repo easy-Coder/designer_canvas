@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
+enum TextNodeVerticalAlign { top, center, bottom }
+
 /// Text in a heuristic [RoundedRectCanvasMixin] frame; paint uses [bounds]
 /// top-left after transforms.
 class TextNode extends CanvasNode with RoundedRectCanvasMixin {
@@ -12,6 +14,10 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
     required String text,
     this.fontSizeWorld = 18,
     required this.color,
+    this.textAlign = TextAlign.start,
+    this.verticalAlign = TextNodeVerticalAlign.top,
+    this.backgroundColor,
+    this.backgroundCornerRadiusWorld = 0,
     super.zIndex = 1,
   })  : _anchor = position,
         _text = text {
@@ -21,7 +27,11 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
   ui.Offset _anchor;
   String _text;
   double fontSizeWorld;
-  final ui.Color color;
+  ui.Color color;
+  TextAlign textAlign;
+  TextNodeVerticalAlign verticalAlign;
+  ui.Color? backgroundColor;
+  double backgroundCornerRadiusWorld;
 
   /// When true, `draw()` skips painting the text so the overlay [TextField]
   /// isn't doubled. The rounded-rect background is still painted.
@@ -79,9 +89,35 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
         ),
       ),
       textDirection: TextDirection.ltr,
+      textAlign: textAlign,
     )..layout(maxWidth: rectWidth * z);
     final tl = bounds.topLeft;
     final localTL = context.camera.globalToLocal(tl.dx, tl.dy);
-    tp.paint(canvas, localTL);
+    final frameHeightPx = rectHeight * z;
+    final freeHeightPx = math.max(0.0, frameHeightPx - tp.height);
+    final verticalFactor = switch (verticalAlign) {
+      TextNodeVerticalAlign.top => 0.0,
+      TextNodeVerticalAlign.center => 0.5,
+      TextNodeVerticalAlign.bottom => 1.0,
+    };
+    final textOffset = ui.Offset(
+      localTL.dx,
+      localTL.dy + freeHeightPx * verticalFactor,
+    );
+    final bg = backgroundColor;
+    if (bg != null) {
+      final frameRect = ui.Rect.fromLTWH(
+        localTL.dx,
+        localTL.dy,
+        rectWidth * z,
+        frameHeightPx,
+      );
+      final radiusPx = math.max(0.0, backgroundCornerRadiusWorld * z);
+      canvas.drawRRect(
+        ui.RRect.fromRectXY(frameRect, radiusPx, radiusPx),
+        ui.Paint()..color = bg,
+      );
+    }
+    tp.paint(canvas, textOffset);
   }
 }

@@ -94,6 +94,21 @@ class InfiniteCanvasController extends ChangeNotifier {
 
   Iterable<CanvasNode> get nodes => _nodesByQuadId.values;
 
+  /// Nodes paired with stable quadtree ids in deterministic paint order.
+  ///
+  /// Lower [CanvasNode.zIndex] appears first; when equal, lower quad id first.
+  List<(int quadId, CanvasNode node)> get orderedNodes {
+    final entries = _nodesByQuadId.entries
+        .map<(int, CanvasNode)>((e) => (e.key, e.value))
+        .toList(growable: false);
+    entries.sort((a, b) {
+      final z = a.$2.zIndex.compareTo(b.$2.zIndex);
+      if (z != 0) return z;
+      return a.$1.compareTo(b.$1);
+    });
+    return entries;
+  }
+
   /// Node for a quadtree id, if present.
   CanvasNode? lookupNode(int quadId) => _nodesByQuadId[quadId];
 

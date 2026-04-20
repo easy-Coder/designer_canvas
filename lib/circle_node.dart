@@ -21,7 +21,7 @@ class CircleNode extends CanvasNode with RoundedRectCanvasMixin {
     );
   }
 
-  final ui.Color color;
+  ui.Color color;
 
   /// Updates center and radius from world space (used for live placement drag).
   void setCenterAndRadius(ui.Offset center, double radius) {

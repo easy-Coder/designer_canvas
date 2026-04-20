@@ -28,7 +28,7 @@ class LineNode extends CanvasNode with RoundedRectCanvasMixin {
     );
   }
 
-  final ui.Color color;
+  ui.Color color;
   final double strokeWidthWorld;
   final double hitThicknessWorld;
 

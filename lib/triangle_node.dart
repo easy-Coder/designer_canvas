@@ -24,7 +24,7 @@ class TriangleNode extends CanvasNode with RoundedRectCanvasMixin {
     );
   }
 
-  final ui.Color color;
+  ui.Color color;
 
   /// Updates equilateral triangle from center and side length (live placement).
   void setCenterAndSide(ui.Offset center, double side) {
