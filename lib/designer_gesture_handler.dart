@@ -24,7 +24,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     required this.gestureConfig,
   });
 
-  final ValueListenable<CanvasTool> tool;
+  final ValueNotifier<CanvasTool> tool;
   final DefaultInfiniteCanvasGestureHandler delegate;
   final InfiniteCanvasGestureConfig gestureConfig;
 
@@ -88,6 +88,12 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     _placeWorldStart = null;
     _placeTool = null;
     _placeQuadId = null;
+  }
+
+  void _switchToSelectTool() {
+    if (tool.value != CanvasTool.select) {
+      tool.value = CanvasTool.select;
+    }
   }
 
   void _beginPreviewNode(
@@ -225,6 +231,11 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           ),
         );
         controller.selectSingle(newId);
+        final node = controller.lookupNode(newId);
+        if (node is TextNode) {
+          startEditing(newId, node, controller);
+        }
+        _switchToSelectTool();
       }
       controller.requestRepaint();
       return;
@@ -238,6 +249,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     if (t == CanvasTool.line) {
       _applyPreviewGeometry(controller, start, end, lineFinalize: true);
       controller.selectSingle(id);
+      _switchToSelectTool();
       controller.requestRepaint();
       return;
     }
@@ -247,6 +259,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     } else {
       _applyPreviewGeometry(controller, start, end, lineFinalize: false);
       controller.selectSingle(id);
+      _switchToSelectTool();
     }
     controller.requestRepaint();
   }
