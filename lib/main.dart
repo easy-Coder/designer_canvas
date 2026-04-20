@@ -78,7 +78,7 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
 
   void _onNodeDoubleClick(int quadId, CanvasNode node) {
     if (node is TextNode) {
-      _designerHandler.startEditing(quadId, node);
+      _designerHandler.startEditing(quadId, node, _controller);
     }
   }
 

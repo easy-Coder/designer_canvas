@@ -34,11 +34,16 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       ValueNotifier(null);
 
   /// Start inline editing for [node] at [quadId].
-  void startEditing(int quadId, TextNode node) {
+  void startEditing(
+    int quadId,
+    TextNode node,
+    InfiniteCanvasController controller,
+  ) {
     // Stop any previous editing first.
     stopEditing(null);
     node.isEditing = true;
     _editingText.value = (quadId: quadId, node: node);
+    controller.requestRepaint();
   }
 
   /// Commit current text (if [newText] non-null) and close the editor.
@@ -449,23 +454,23 @@ class _TextEditOverlayState extends State<_TextEditOverlay> {
     final worldBounds = widget.node.bounds;
     final viewRect = cam.globalToLocalRect(worldBounds);
 
+    final fontSize = viewRect.height / 1.35;
+
     return Positioned(
       left: viewRect.left,
       top: viewRect.top,
       width: viewRect.width,
       height: viewRect.height,
-      child: TextField(
+      child: EditableText(
         controller: _textCtrl,
         focusNode: _focus,
         style: TextStyle(
           color: Color(widget.node.color.toARGB32()),
-          fontSize: viewRect.height / 1.35,
+          fontSize: fontSize,
+          height: 1.0,
         ),
-        decoration: const InputDecoration(
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.zero,
-          isDense: true,
-        ),
+        cursorColor: Color(widget.node.color.toARGB32()),
+        backgroundCursorColor: Colors.grey,
         onSubmitted: (_) => _commit(),
       ),
     );
