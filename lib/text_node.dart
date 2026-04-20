@@ -35,6 +35,13 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
     _syncGeometry();
   }
 
+  /// Update the displayed text without recalculating the node's frame geometry.
+  /// Use this when the user edits text inline so that position, size, rotation,
+  /// and any handle transforms are preserved.
+  void updateText(String value) {
+    _text = value;
+  }
+
   (double, double) _frameSize() {
     final w = math
         .min(

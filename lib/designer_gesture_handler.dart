@@ -370,7 +370,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
               quadId: editing.quadId,
               camera: controller.camera,
               onDone: (newText) {
-                editing.node.text = newText;
+                editing.node.updateText(newText);
                 stopEditing(controller);
               },
             );
