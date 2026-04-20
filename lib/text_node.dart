@@ -23,6 +23,10 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
   double fontSizeWorld;
   final ui.Color color;
 
+  /// When true, `draw()` skips painting the text so the overlay [TextField]
+  /// isn't doubled. The rounded-rect background is still painted.
+  bool isEditing = false;
+
   String get text => _text;
 
   set text(String value) {
@@ -56,6 +60,7 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
   @override
   void draw(ui.Canvas canvas, CanvasPaintContext context) {
     super.draw(canvas, context);
+    if (isEditing) return;
     final z = context.camera.zoomDouble;
     final layoutSize = (rectHeight / 1.35).clamp(4.0, 512.0);
     final tp = TextPainter(

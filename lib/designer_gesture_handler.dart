@@ -3,7 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 import 'canvas_tool.dart';
 import 'circle_node.dart';
@@ -28,6 +28,32 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
   final DefaultInfiniteCanvasGestureHandler delegate;
   final InfiniteCanvasGestureConfig gestureConfig;
 
+  // ─── Text editing overlay state ──────────────────────────────────────
+  /// Currently edited text node, or null.
+  final ValueNotifier<({int quadId, TextNode node})?> _editingText =
+      ValueNotifier(null);
+
+  /// Start inline editing for [node] at [quadId].
+  void startEditing(int quadId, TextNode node) {
+    // Stop any previous editing first.
+    stopEditing(null);
+    node.isEditing = true;
+    _editingText.value = (quadId: quadId, node: node);
+  }
+
+  /// Commit current text (if [newText] non-null) and close the editor.
+  void stopEditing(InfiniteCanvasController? controller) {
+    final editing = _editingText.value;
+    if (editing == null) return;
+    editing.node.isEditing = false;
+    _editingText.value = null;
+    if (controller != null) {
+      controller.updateNode(editing.quadId);
+      controller.requestRepaint();
+    }
+  }
+
+  // ─── Placement state ─────────────────────────────────────────────────
   int? _placePointer;
   ui.Offset? _placeWorldStart;
   CanvasTool? _placeTool;
@@ -235,6 +261,11 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       controller.clearHover();
     }
 
+    // Dismiss the text editor when the user clicks anywhere (in any mode).
+    if (event is PointerDownEvent && _editingText.value != null) {
+      stopEditing(controller);
+    }
+
     if (tool.value == CanvasTool.select) {
       delegate.handlePointerEvent(event, controller);
       return;
@@ -311,9 +342,132 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     KeyEvent event,
     InfiniteCanvasController controller,
   ) {
+    // While editing text, don't consume key events so the TextField gets them.
+    if (_editingText.value != null) return false;
     if (tool.value == CanvasTool.select) {
       return delegate.handleKeyEvent(event, controller);
     }
     return false;
+  }
+
+  // ─── Overlay widget ──────────────────────────────────────────────────
+  @override
+  Widget wrap(
+    BuildContext context,
+    InfiniteCanvasController controller,
+    Widget child,
+  ) {
+    return Stack(
+      children: [
+        child,
+        ValueListenableBuilder<({int quadId, TextNode node})?>( 
+          valueListenable: _editingText,
+          builder: (context, editing, _) {
+            if (editing == null) return const SizedBox.shrink();
+            return _TextEditOverlay(
+              key: ValueKey(editing.quadId),
+              node: editing.node,
+              quadId: editing.quadId,
+              camera: controller.camera,
+              onDone: (newText) {
+                editing.node.text = newText;
+                stopEditing(controller);
+              },
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+/// Positioned [TextField] over a [TextNode] in viewport space.
+class _TextEditOverlay extends StatefulWidget {
+  const _TextEditOverlay({
+    super.key,
+    required this.node,
+    required this.quadId,
+    required this.camera,
+    required this.onDone,
+  });
+
+  final TextNode node;
+  final int quadId;
+  final Camera camera;
+  final ValueChanged<String> onDone;
+
+  @override
+  State<_TextEditOverlay> createState() => _TextEditOverlayState();
+}
+
+class _TextEditOverlayState extends State<_TextEditOverlay> {
+  late final TextEditingController _textCtrl;
+  late final FocusNode _focus;
+  bool _committed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _textCtrl = TextEditingController(text: widget.node.text);
+    _focus = FocusNode();
+    _focus.addListener(_onFocusChange);
+    // Auto-focus on next frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _focus.requestFocus();
+        _textCtrl.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: _textCtrl.text.length,
+        );
+      }
+    });
+  }
+
+  void _onFocusChange() {
+    if (!_focus.hasFocus && !_committed) {
+      _commit();
+    }
+  }
+
+  void _commit() {
+    if (_committed) return;
+    _committed = true;
+    widget.onDone(_textCtrl.text);
+  }
+
+  @override
+  void dispose() {
+    _focus.removeListener(_onFocusChange);
+    _focus.dispose();
+    _textCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cam = widget.camera;
+    final worldBounds = widget.node.bounds;
+    final viewRect = cam.globalToLocalRect(worldBounds);
+
+    return Positioned(
+      left: viewRect.left,
+      top: viewRect.top,
+      width: viewRect.width,
+      height: viewRect.height,
+      child: TextField(
+        controller: _textCtrl,
+        focusNode: _focus,
+        style: TextStyle(
+          color: Color(widget.node.color.toARGB32()),
+          fontSize: viewRect.height / 1.35,
+        ),
+        decoration: const InputDecoration(
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.zero,
+          isDense: true,
+        ),
+        onSubmitted: (_) => _commit(),
+      ),
+    );
   }
 }

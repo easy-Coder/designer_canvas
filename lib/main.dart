@@ -6,6 +6,7 @@ import 'package:infinite_canvas/infinite_canvas.dart';
 import 'canvas_tool.dart';
 import 'designer_gesture_handler.dart';
 import 'rect_node.dart';
+import 'text_node.dart';
 
 void main() {
   runApp(const MainApp());
@@ -40,7 +41,10 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
   void initState() {
     super.initState();
     const world = ui.Rect.fromLTWH(-10000, -10000, 20000, 20000);
-    _controller = InfiniteCanvasController(worldBounds: world);
+    _controller = InfiniteCanvasController(
+      worldBounds: world,
+      onNodeDoubleClick: _onNodeDoubleClick,
+    );
     _controller.camera.changeSize(const ui.Size(800, 600));
     _controller.camera.moveTo(ui.Offset.zero);
     _controller.camera.setZoomDouble(0.35);
@@ -70,6 +74,12 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
       delegate: _defaultHandler,
       gestureConfig: _gestureConfig,
     );
+  }
+
+  void _onNodeDoubleClick(int quadId, CanvasNode node) {
+    if (node is TextNode) {
+      _designerHandler.startEditing(quadId, node);
+    }
   }
 
   @override
