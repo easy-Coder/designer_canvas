@@ -4,34 +4,85 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
-enum TextNodeVerticalAlign { top, center, bottom }
-
+import 'node_styles.dart';
 /// Text in a heuristic [RoundedRectCanvasMixin] frame; paint uses [bounds]
 /// top-left after transforms.
 class TextNode extends CanvasNode with RoundedRectCanvasMixin {
   TextNode({
     required ui.Offset position,
     required String text,
-    this.fontSizeWorld = 18,
-    required this.color,
-    this.textAlign = TextAlign.left,
-    this.verticalAlign = TextNodeVerticalAlign.top,
-    this.backgroundColor,
-    this.backgroundCornerRadiusWorld = 0,
+    TextNodeStyle? style,
+    String? label,
     super.zIndex = 1,
-  })  : _anchor = position,
+  }) : _anchor = position,
         _text = text {
+    this.style = style ?? const TextNodeStyle();
+    this.label = label ?? 'Text';
     _syncGeometry();
   }
 
   ui.Offset _anchor;
   String _text;
-  double fontSizeWorld;
-  ui.Color color;
-  TextAlign textAlign;
-  TextNodeVerticalAlign verticalAlign;
-  ui.Color? backgroundColor;
-  double backgroundCornerRadiusWorld;
+
+  TextNodeStyle get textStyle => style as TextNodeStyle;
+
+  @override
+  set style(NodeStyle value) {
+    if (value is! TextNodeStyle) return;
+    super.style = value;
+  }
+
+  double get fontSizeWorld => textStyle.fontSize;
+
+  set fontSizeWorld(double value) {
+    style = textStyle.copyWith(fontSize: value);
+    _syncGeometry();
+  }
+
+  ui.Color get color => textStyle.color;
+
+  set color(ui.Color value) {
+    style = textStyle.copyWith(color: value);
+  }
+
+  TextAlign get textAlign {
+    return switch (textStyle.textAlign) {
+      NodeTextAlign.left => TextAlign.left,
+      NodeTextAlign.center => TextAlign.center,
+      NodeTextAlign.right => TextAlign.right,
+    };
+  }
+
+  set textAlign(TextAlign value) {
+    style = textStyle.copyWith(
+      textAlign: switch (value) {
+        TextAlign.center => NodeTextAlign.center,
+        TextAlign.right => NodeTextAlign.right,
+        _ => NodeTextAlign.left,
+      },
+    );
+  }
+
+  NodeTextVerticalAlign get verticalAlign => textStyle.verticalAlign;
+
+  set verticalAlign(NodeTextVerticalAlign value) {
+    style = textStyle.copyWith(verticalAlign: value);
+  }
+
+  ui.Color? get backgroundColor => textStyle.backgroundColor;
+
+  set backgroundColor(ui.Color? value) {
+    style = textStyle.copyWith(
+      backgroundColor: value,
+      clearBackgroundColor: value == null,
+    );
+  }
+
+  double get backgroundCornerRadiusWorld => textStyle.backgroundCornerRadius;
+
+  set backgroundCornerRadiusWorld(double value) {
+    style = textStyle.copyWith(backgroundCornerRadius: value);
+  }
 
   /// When true, `draw()` skips painting the text so the overlay [TextField]
   /// isn't doubled. The rounded-rect background is still painted.
@@ -78,18 +129,39 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
   void draw(ui.Canvas canvas, CanvasPaintContext context) {
     super.draw(canvas, context);
     if (isEditing) return;
+    final s = textStyle;
     final z = context.camera.zoomDouble;
-    final layoutSize = fontSizeWorld.clamp(4.0, 512.0);
+    final layoutSize = s.fontSize.clamp(4.0, 512.0);
     final tp = TextPainter(
       text: TextSpan(
         text: _text,
         style: TextStyle(
-          color: color,
+          color: s.color,
+          fontFamily: s.fontFamily,
+          fontStyle: s.fontStyle,
+          fontWeight: FontWeight
+              .values[((s.fontWeight ~/ 100) - 1).clamp(0, 8)],
           fontSize: layoutSize * z,
+          shadows: s.shadow == null
+              ? null
+              : [
+                  Shadow(
+                    color: s.shadow!.color,
+                    offset: ui.Offset(
+                      s.shadow!.offsetX * z,
+                      s.shadow!.offsetY * z,
+                    ),
+                    blurRadius: s.shadow!.blurRadius,
+                  ),
+                ],
         ),
       ),
       textDirection: TextDirection.ltr,
-      textAlign: textAlign,
+      textAlign: switch (s.textAlign) {
+        NodeTextAlign.left => TextAlign.left,
+        NodeTextAlign.center => TextAlign.center,
+        NodeTextAlign.right => TextAlign.right,
+      },
     )..layout(
         minWidth: rectWidth * z,
         maxWidth: rectWidth * z,
@@ -98,16 +170,16 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
     final localTL = context.camera.globalToLocal(tl.dx, tl.dy);
     final frameHeightPx = rectHeight * z;
     final freeHeightPx = math.max(0.0, frameHeightPx - tp.height);
-    final verticalFactor = switch (verticalAlign) {
-      TextNodeVerticalAlign.top => 0.0,
-      TextNodeVerticalAlign.center => 0.5,
-      TextNodeVerticalAlign.bottom => 1.0,
+    final verticalFactor = switch (s.verticalAlign) {
+      NodeTextVerticalAlign.top => 0.0,
+      NodeTextVerticalAlign.center => 0.5,
+      NodeTextVerticalAlign.bottom => 1.0,
     };
     final textOffset = ui.Offset(
       localTL.dx,
       localTL.dy + freeHeightPx * verticalFactor,
     );
-    final bg = backgroundColor;
+    final bg = s.backgroundColor;
     if (bg != null) {
       final frameRect = ui.Rect.fromLTWH(
         localTL.dx,
@@ -115,7 +187,7 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
         rectWidth * z,
         frameHeightPx,
       );
-      final radiusPx = math.max(0.0, backgroundCornerRadiusWorld * z);
+      final radiusPx = math.max(0.0, s.backgroundCornerRadius * z);
       canvas.drawRRect(
         ui.RRect.fromRectXY(frameRect, radiusPx, radiusPx),
         ui.Paint()..color = bg,

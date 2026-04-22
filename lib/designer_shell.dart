@@ -2,25 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
 import 'canvas_tool.dart';
-import 'circle_node.dart';
 import 'designer_gesture_handler.dart';
-import 'line_node.dart';
 import 'property_inspector.dart';
-import 'rect_node.dart';
-import 'text_node.dart';
-import 'triangle_node.dart';
+import 'tool_style_defaults.dart';
 
 class DesignerShell extends StatelessWidget {
   const DesignerShell({
     super.key,
     required this.controller,
     required this.tool,
+    required this.toolDefaults,
     required this.gestureConfig,
     required this.gestureHandler,
   });
 
   final InfiniteCanvasController controller;
   final ValueNotifier<CanvasTool> tool;
+  final ValueNotifier<ToolStyleDefaults> toolDefaults;
   final InfiniteCanvasGestureConfig gestureConfig;
   final DesignerGestureHandler gestureHandler;
 
@@ -91,7 +89,11 @@ class DesignerShell extends StatelessWidget {
           child: ColoredBox(
             color: scheme.surfaceContainerHigh,
             child: _PropertyPanelTitle(
-              child: PropertyInspector(controller: controller),
+              child: PropertyInspector(
+                controller: controller,
+                tool: tool,
+                toolDefaults: toolDefaults,
+              ),
             ),
           ),
         ),
@@ -158,7 +160,7 @@ class _NodesPanel extends StatelessWidget {
                         : null,
                     child: ListTile(
                       dense: true,
-                      title: Text(_nodeName(node)),
+                      title: Text(node.label),
                       subtitle: Text('id: $quadId'),
                       onTap: () => controller.selectSingle(quadId),
                     ),
@@ -170,15 +172,6 @@ class _NodesPanel extends StatelessWidget {
         ),
       ],
     );
-  }
-
-  static String _nodeName(CanvasNode node) {
-    if (node is RectNode) return 'Rectangle';
-    if (node is CircleNode) return 'Circle';
-    if (node is TriangleNode) return 'Triangle';
-    if (node is LineNode) return 'Line';
-    if (node is TextNode) return 'Text';
-    return node.runtimeType.toString();
   }
 }
 

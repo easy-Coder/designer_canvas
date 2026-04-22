@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'canvas_paint_context.dart';
+import 'node_style.dart';
 
 /// Base class for drawable objects in world space.
 ///
@@ -26,10 +27,29 @@ import 'canvas_paint_context.dart';
 /// painting): [RoundedRectCanvasMixin]. Subclasses implement [draw] for
 /// different visuals inside the same world-space frame.
 abstract class CanvasNode {
-  CanvasNode({this.zIndex = 0});
+  CanvasNode({
+    this.zIndex = 0,
+    NodeStyle? style,
+    String? label,
+  })  : _style = style ?? const BasicNodeStyle(),
+        label = label ?? 'Node';
 
   /// Lower values are drawn first; higher values paint on top.
   final int zIndex;
+
+  NodeStyle _style;
+
+  /// Common node style contract. Concrete nodes may enforce subtype guards.
+  // ignore: unnecessary_getters_setters
+  NodeStyle get style => _style;
+
+  // ignore: unnecessary_getters_setters
+  set style(NodeStyle value) {
+    _style = value;
+  }
+
+  /// User-facing node name shown in sidebars/inspectors.
+  String label;
 
   /// World-space axis-aligned bounds used for culling and spatial indexing.
   ui.Rect get bounds;

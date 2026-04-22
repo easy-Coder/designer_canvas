@@ -9,6 +9,7 @@ import 'circle_node.dart';
 import 'line_node.dart';
 import 'rect_node.dart';
 import 'text_node.dart';
+import 'tool_style_defaults.dart';
 import 'triangle_node.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
@@ -19,11 +20,13 @@ const int _kPrimaryMouseButton = 0x01;
 class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
   DesignerGestureHandler({
     required this.tool,
+    required this.toolDefaults,
     required this.delegate,
     required this.gestureConfig,
   });
 
   final ValueNotifier<CanvasTool> tool;
+  final ValueNotifier<ToolStyleDefaults> toolDefaults;
   final DefaultInfiniteCanvasGestureHandler delegate;
   final InfiniteCanvasGestureConfig gestureConfig;
 
@@ -111,8 +114,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
         _placeQuadId = controller.addNode(
           RectNode.fromAxisAlignedRect(
             r,
-            color: const ui.Color(0xFFE65100),
-            cornerRadiusWorld: 6,
+            style: toolDefaults.value.rect,
             zIndex: 2,
           ),
         );
@@ -121,7 +123,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           CircleNode(
             center: start,
             radius: eps / 2,
-            color: const ui.Color(0xFF7B1FA2),
+            style: toolDefaults.value.circle,
             zIndex: 2,
           ),
         );
@@ -130,7 +132,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           TriangleNode(
             center: start,
             side: eps,
-            color: const ui.Color(0xFF00897B),
+            style: toolDefaults.value.triangle,
             zIndex: 2,
           ),
         );
@@ -139,7 +141,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           LineNode(
             start: start,
             end: ui.Offset(start.dx + eps, start.dy),
-            color: const ui.Color(0xFFC62828),
+            style: toolDefaults.value.line,
             zIndex: 2,
           ),
         );
@@ -224,8 +226,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           TextNode(
             position: start,
             text: 'Text',
-            fontSizeWorld: 22,
-            color: const ui.Color(0xFF37474F),
+            style: toolDefaults.value.text,
             zIndex: 2,
           ),
         );
