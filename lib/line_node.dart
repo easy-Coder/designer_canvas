@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:infinite_canvas/infinite_canvas.dart';
 
+import 'node_styles.dart';
 import 'style_painter.dart';
 
 /// Line segment as a thin oriented [RoundedRectCanvasMixin] frame.

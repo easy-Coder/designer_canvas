@@ -14,6 +14,7 @@ class DesignerShell extends StatelessWidget {
     required this.toolDefaults,
     required this.gestureConfig,
     required this.gestureHandler,
+    required this.canvasFocusNode,
   });
 
   final InfiniteCanvasController controller;
@@ -21,6 +22,7 @@ class DesignerShell extends StatelessWidget {
   final ValueNotifier<ToolStyleDefaults> toolDefaults;
   final InfiniteCanvasGestureConfig gestureConfig;
   final DesignerGestureHandler gestureHandler;
+  final FocusNode canvasFocusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -37,10 +39,13 @@ class DesignerShell extends StatelessWidget {
         Expanded(
           child: Stack(
             children: [
-              InfiniteCanvasView(
-                controller: controller,
-                gestureHandler: gestureHandler,
-                gestureConfig: gestureConfig,
+              Focus(
+                focusNode: canvasFocusNode,
+                child: InfiniteCanvasView(
+                  controller: controller,
+                  gestureHandler: gestureHandler,
+                  gestureConfig: gestureConfig,
+                ),
               ),
               Align(
                 alignment: Alignment.bottomCenter,

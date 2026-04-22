@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
+import 'package:flutter/services.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
 import 'node_styles.dart';
@@ -87,12 +88,21 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
   /// When true, `draw()` skips painting the text so the overlay [TextField]
   /// isn't doubled. The rounded-rect background is still painted.
   bool isEditing = false;
+  TextEditingValue _editingValue = const TextEditingValue();
+  bool caretVisible = false;
+
+  TextEditingValue get editingValue => _editingValue;
 
   String get text => _text;
 
   set text(String value) {
     _anchor = bounds.topLeft;
     _text = value;
+    _editingValue = _editingValue.copyWith(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+      composing: TextRange.empty,
+    );
     _syncGeometry();
   }
 
@@ -101,6 +111,130 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
   /// and any handle transforms are preserved.
   void updateText(String value) {
     _text = value;
+    final selectionOffset = value.length.clamp(0, value.length);
+    _editingValue = TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(offset: selectionOffset),
+      composing: TextRange.empty,
+    );
+  }
+
+  void beginEditing({TextSelection? selection}) {
+    final nextSelection = selection ?? TextSelection.collapsed(offset: _text.length);
+    _editingValue = TextEditingValue(
+      text: _text,
+      selection: nextSelection,
+      composing: TextRange.empty,
+    );
+    isEditing = true;
+    caretVisible = true;
+  }
+
+  void endEditing() {
+    isEditing = false;
+    caretVisible = false;
+    _editingValue = TextEditingValue(
+      text: _text,
+      selection: TextSelection.collapsed(offset: _text.length),
+      composing: TextRange.empty,
+    );
+  }
+
+  void applyEditingValue(TextEditingValue value) {
+    _editingValue = value;
+    _text = value.text;
+    _syncGeometryFromText();
+  }
+
+  TextPainter createTextPainter(double zoom, {String? text}) {
+    final s = textStyle;
+    final layoutSize = s.fontSize.clamp(4.0, 512.0);
+    return TextPainter(
+      text: TextSpan(
+        text: text ?? (isEditing ? _editingValue.text : _text),
+        style: TextStyle(
+          color: s.color,
+          fontFamily: s.fontFamily,
+          fontStyle: s.fontStyle,
+          fontWeight: FontWeight
+              .values[((s.fontWeight ~/ 100) - 1).clamp(0, 8)],
+          fontSize: layoutSize * zoom,
+          shadows: s.shadow == null
+              ? null
+              : [
+                  Shadow(
+                    color: s.shadow!.color,
+                    offset: ui.Offset(
+                      s.shadow!.offsetX * zoom,
+                      s.shadow!.offsetY * zoom,
+                    ),
+                    blurRadius: s.shadow!.blurRadius,
+                  ),
+                ],
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      textAlign: switch (s.textAlign) {
+        NodeTextAlign.left => TextAlign.left,
+        NodeTextAlign.center => TextAlign.center,
+        NodeTextAlign.right => TextAlign.right,
+      },
+    )..layout(
+        minWidth: rectWidth * zoom,
+        maxWidth: rectWidth * zoom,
+      );
+  }
+
+  ui.Offset textOffsetForCamera(CameraView camera, TextPainter tp) {
+    final z = camera.zoomDouble;
+    final tl = bounds.topLeft;
+    final localTL = camera.globalToLocal(tl.dx, tl.dy);
+    final frameHeightPx = rectHeight * z;
+    final freeHeightPx = math.max(0.0, frameHeightPx - tp.height);
+    final verticalFactor = switch (textStyle.verticalAlign) {
+      NodeTextVerticalAlign.top => 0.0,
+      NodeTextVerticalAlign.center => 0.5,
+      NodeTextVerticalAlign.bottom => 1.0,
+    };
+    return ui.Offset(localTL.dx, localTL.dy + freeHeightPx * verticalFactor);
+  }
+
+  TextPosition positionForViewportOffset(ui.Offset viewportOffset, CameraView camera) {
+    final tp = createTextPainter(camera.zoomDouble);
+    final textOffset = textOffsetForCamera(camera, tp);
+    final localOffset = viewportOffset - textOffset;
+    return tp.getPositionForOffset(localOffset);
+  }
+
+  void _syncGeometryFromText() {
+    final s = textStyle;
+    final painter = TextPainter(
+      text: TextSpan(
+        text: _text,
+        style: TextStyle(
+          fontFamily: s.fontFamily,
+          fontStyle: s.fontStyle,
+          fontWeight: FontWeight
+              .values[((s.fontWeight ~/ 100) - 1).clamp(0, 8)],
+          fontSize: s.fontSize.clamp(4.0, 512.0),
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      textAlign: switch (s.textAlign) {
+        NodeTextAlign.left => TextAlign.left,
+        NodeTextAlign.center => TextAlign.center,
+        NodeTextAlign.right => TextAlign.right,
+      },
+    )..layout(minWidth: 24.0, maxWidth: 800.0);
+    final w = painter.width.clamp(24.0, 800.0);
+    final h = math.max(s.fontSize * 1.35, painter.height);
+    final center = ui.Offset(_anchor.dx + w / 2, _anchor.dy + h / 2);
+    initRoundedRectGeometry(
+      center: center,
+      width: w,
+      height: h,
+      rotationRadians: 0,
+    );
   }
 
   (double, double) _frameSize() {
@@ -128,64 +262,17 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
   @override
   void draw(ui.Canvas canvas, CanvasPaintContext context) {
     super.draw(canvas, context);
-    if (isEditing) return;
-    final s = textStyle;
     final z = context.camera.zoomDouble;
-    final layoutSize = s.fontSize.clamp(4.0, 512.0);
-    final tp = TextPainter(
-      text: TextSpan(
-        text: _text,
-        style: TextStyle(
-          color: s.color,
-          fontFamily: s.fontFamily,
-          fontStyle: s.fontStyle,
-          fontWeight: FontWeight
-              .values[((s.fontWeight ~/ 100) - 1).clamp(0, 8)],
-          fontSize: layoutSize * z,
-          shadows: s.shadow == null
-              ? null
-              : [
-                  Shadow(
-                    color: s.shadow!.color,
-                    offset: ui.Offset(
-                      s.shadow!.offsetX * z,
-                      s.shadow!.offsetY * z,
-                    ),
-                    blurRadius: s.shadow!.blurRadius,
-                  ),
-                ],
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-      textAlign: switch (s.textAlign) {
-        NodeTextAlign.left => TextAlign.left,
-        NodeTextAlign.center => TextAlign.center,
-        NodeTextAlign.right => TextAlign.right,
-      },
-    )..layout(
-        minWidth: rectWidth * z,
-        maxWidth: rectWidth * z,
-      );
-    final tl = bounds.topLeft;
-    final localTL = context.camera.globalToLocal(tl.dx, tl.dy);
-    final frameHeightPx = rectHeight * z;
-    final freeHeightPx = math.max(0.0, frameHeightPx - tp.height);
-    final verticalFactor = switch (s.verticalAlign) {
-      NodeTextVerticalAlign.top => 0.0,
-      NodeTextVerticalAlign.center => 0.5,
-      NodeTextVerticalAlign.bottom => 1.0,
-    };
-    final textOffset = ui.Offset(
-      localTL.dx,
-      localTL.dy + freeHeightPx * verticalFactor,
-    );
+    final s = textStyle;
+    final tp = createTextPainter(z);
+    final textOffset = textOffsetForCamera(context.camera, tp);
     final bg = s.backgroundColor;
     if (bg != null) {
       final frameRect = ui.Rect.fromLTWH(
-        localTL.dx,
-        localTL.dy,
+        textOffset.dx,
+        context.camera.globalToLocal(bounds.topLeft.dx, bounds.topLeft.dy).dy,
         rectWidth * z,
-        frameHeightPx,
+        rectHeight * z,
       );
       final radiusPx = math.max(0.0, s.backgroundCornerRadius * z);
       canvas.drawRRect(
@@ -193,6 +280,48 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
         ui.Paint()..color = bg,
       );
     }
+    if (isEditing && _editingValue.selection.isValid && !_editingValue.selection.isCollapsed) {
+      final boxes = tp.getBoxesForSelection(_editingValue.selection);
+      final paint = ui.Paint()..color = const ui.Color(0x663382F6);
+      for (final box in boxes) {
+        canvas.drawRect(box.toRect().shift(textOffset), paint);
+      }
+    }
     tp.paint(canvas, textOffset);
+    if (isEditing && _editingValue.composing.isValid && !_editingValue.composing.isCollapsed) {
+      final composeBoxes = tp.getBoxesForSelection(
+        TextSelection(
+          baseOffset: _editingValue.composing.start,
+          extentOffset: _editingValue.composing.end,
+        ),
+      );
+      final composePaint = ui.Paint()..color = const ui.Color(0xFF1565C0);
+      for (final box in composeBoxes) {
+        final rect = box.toRect().shift(textOffset);
+        final underline = ui.Rect.fromLTWH(
+          rect.left,
+          rect.bottom - 2,
+          rect.width,
+          2,
+        );
+        canvas.drawRect(underline, composePaint);
+      }
+    }
+    if (isEditing && caretVisible && _editingValue.selection.isValid && _editingValue.selection.isCollapsed) {
+      final clamped = _editingValue.selection.extentOffset.clamp(0, _editingValue.text.length);
+      final caretOffset = tp.getOffsetForCaret(
+        TextPosition(offset: clamped),
+        ui.Rect.fromLTWH(0, 0, 1.5, tp.preferredLineHeight),
+      );
+      canvas.drawRect(
+        ui.Rect.fromLTWH(
+          textOffset.dx + caretOffset.dx,
+          textOffset.dy + caretOffset.dy,
+          1.5,
+          tp.preferredLineHeight,
+        ),
+        ui.Paint()..color = s.color,
+      );
+    }
   }
 }
