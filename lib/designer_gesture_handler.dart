@@ -18,6 +18,9 @@ import 'package:infinite_canvas/infinite_canvas.dart';
 const int _kPrimaryMouseButton = 0x01;
 const Duration _kDoubleClickTimeout = Duration(milliseconds: 350);
 const double _kDoubleClickMaxDistance = 8.0;
+const int _kDragModeChar = 0;
+const int _kDragModeWord = 1;
+const int _kDragModeLine = 2;
 
 /// Forwards to [DefaultInfiniteCanvasGestureHandler] in [CanvasTool.select];
 /// in other tools, primary pointer creates nodes (drag or tap).
@@ -49,9 +52,11 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
   String? _editSnapshot;
   int? _textDragPointer;
   int? _textDragAnchorOffset;
-  bool _textDragByWord = false;
+  int _textDragMode = _kDragModeChar;
+  int _selectionAnchorOffset = 0;
   Duration? _lastTextPointerDownAt;
   ui.Offset? _lastTextPointerDownLocal;
+  int _textClickCount = 0;
 
   @override
   int? get activeEditingQuadId => _editingText.value?.quadId;
@@ -221,6 +226,36 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     return i;
   }
 
+  TextSelection _lineSelectionAtOffset(
+    TextNode node,
+    CameraView camera,
+    String text,
+    int offset,
+  ) {
+    final clamped = offset.clamp(0, text.length);
+    final painter = node.createTextPainter(camera.zoomDouble, text: text);
+    final caret = painter.getOffsetForCaret(
+      TextPosition(offset: clamped),
+      ui.Rect.fromLTWH(0, 0, 1, painter.preferredLineHeight),
+    );
+    final metrics = painter.computeLineMetrics();
+    if (metrics.isEmpty) {
+      return TextSelection.collapsed(offset: clamped);
+    }
+    final line = metrics.firstWhere(
+      (m) =>
+          caret.dy >= m.baseline - m.ascent &&
+          caret.dy <= m.baseline + m.descent,
+      orElse: () => metrics.last,
+    );
+    final y = line.baseline - (line.ascent / 2);
+    final start = painter.getPositionForOffset(ui.Offset(0, y)).offset;
+    final end = painter
+        .getPositionForOffset(ui.Offset(painter.width + 1000, y))
+        .offset;
+    return TextSelection(baseOffset: start, extentOffset: end);
+  }
+
   /// Start inline editing for [node] at [quadId].
   void startEditing(
     int quadId,
@@ -302,7 +337,9 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     _editingText.value = null;
     _textDragPointer = null;
     _textDragAnchorOffset = null;
-    _textDragByWord = false;
+    _textDragMode = _kDragModeChar;
+    _selectionAnchorOffset = 0;
+    _textClickCount = 0;
     if (controller != null) {
       controller.updateNode(editing.quadId);
       controller.requestRepaint();
@@ -540,29 +577,45 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           controller.camera,
         );
         final extentOffset = position.offset;
-        final nextSelection = _textDragByWord
-            ? (extentOffset >= anchor
-                  ? TextSelection(
-                      baseOffset: _wordStart(
-                        editing.node.editingValue.text,
-                        anchor,
-                      ),
-                      extentOffset: _wordEnd(
-                        editing.node.editingValue.text,
-                        extentOffset,
-                      ),
-                    )
-                  : TextSelection(
-                      baseOffset: _wordEnd(
-                        editing.node.editingValue.text,
-                        anchor,
-                      ),
-                      extentOffset: _wordStart(
-                        editing.node.editingValue.text,
-                        extentOffset,
-                      ),
-                    ))
-            : TextSelection(baseOffset: anchor, extentOffset: extentOffset);
+        final nextSelection = switch (_textDragMode) {
+          _kDragModeWord =>
+            extentOffset >= anchor
+                ? TextSelection(
+                    baseOffset: _wordStart(
+                      editing.node.editingValue.text,
+                      anchor,
+                    ),
+                    extentOffset: _wordEnd(
+                      editing.node.editingValue.text,
+                      extentOffset,
+                    ),
+                  )
+                : TextSelection(
+                    baseOffset: _wordEnd(
+                      editing.node.editingValue.text,
+                      anchor,
+                    ),
+                    extentOffset: _wordStart(
+                      editing.node.editingValue.text,
+                      extentOffset,
+                    ),
+                  ),
+          _kDragModeLine => TextSelection(
+            baseOffset: _lineSelectionAtOffset(
+              editing.node,
+              controller.camera,
+              editing.node.editingValue.text,
+              anchor,
+            ).baseOffset,
+            extentOffset: _lineSelectionAtOffset(
+              editing.node,
+              controller.camera,
+              editing.node.editingValue.text,
+              extentOffset,
+            ).extentOffset,
+          ),
+          _ => TextSelection(baseOffset: anchor, extentOffset: extentOffset),
+        };
         final nextValue = editing.node.editingValue.copyWith(
           selection: nextSelection,
         );
@@ -574,7 +627,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           (event is PointerUpEvent || event is PointerCancelEvent)) {
         _textDragPointer = null;
         _textDragAnchorOffset = null;
-        _textDragByWord = false;
+        _textDragMode = _kDragModeChar;
         return;
       }
     }
@@ -594,25 +647,61 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           controller.camera,
         );
         final now = event.timeStamp;
-        final isDoubleClick =
+        final isRepeatedClick =
             _lastTextPointerDownAt != null &&
             (now - _lastTextPointerDownAt!) <= _kDoubleClickTimeout &&
             _lastTextPointerDownLocal != null &&
             (event.localPosition - _lastTextPointerDownLocal!).distance <=
                 _kDoubleClickMaxDistance;
+        _textClickCount = isRepeatedClick
+            ? (_textClickCount + 1).clamp(1, 4)
+            : 1;
+        final isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
         final offset = position.offset;
-        final selection = isDoubleClick
-            ? TextSelection(
-                baseOffset: _wordStart(editing.node.editingValue.text, offset),
-                extentOffset: _wordEnd(editing.node.editingValue.text, offset),
-              )
-            : TextSelection.collapsed(offset: offset);
+        final current = editing.node.editingValue.selection;
+        late final TextSelection selection;
+        late final int dragMode;
+        late final int anchor;
+        if (isShiftPressed && _textClickCount == 1) {
+          anchor = current.isValid
+              ? current.baseOffset
+              : _selectionAnchorOffset;
+          selection = TextSelection(baseOffset: anchor, extentOffset: offset);
+          dragMode = _kDragModeChar;
+        } else if (_textClickCount == 2) {
+          final start = _wordStart(editing.node.editingValue.text, offset);
+          final end = _wordEnd(editing.node.editingValue.text, offset);
+          selection = TextSelection(baseOffset: start, extentOffset: end);
+          anchor = start;
+          dragMode = _kDragModeWord;
+        } else if (_textClickCount == 3) {
+          selection = _lineSelectionAtOffset(
+            editing.node,
+            controller.camera,
+            editing.node.editingValue.text,
+            offset,
+          );
+          anchor = selection.baseOffset;
+          dragMode = _kDragModeLine;
+        } else if (_textClickCount >= 4) {
+          selection = TextSelection(
+            baseOffset: 0,
+            extentOffset: editing.node.editingValue.text.length,
+          );
+          anchor = 0;
+          dragMode = _kDragModeChar;
+        } else {
+          selection = TextSelection.collapsed(offset: offset);
+          anchor = offset;
+          dragMode = _kDragModeChar;
+        }
         final nextValue = editing.node.editingValue.copyWith(
           selection: selection,
         );
         _textDragPointer = event.pointer;
-        _textDragAnchorOffset = offset;
-        _textDragByWord = isDoubleClick;
+        _textDragAnchorOffset = anchor;
+        _selectionAnchorOffset = anchor;
+        _textDragMode = dragMode;
         _lastTextPointerDownAt = now;
         _lastTextPointerDownLocal = event.localPosition;
         _applyEditingValue(controller, nextValue);
@@ -620,7 +709,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       }
       _textDragPointer = null;
       _textDragAnchorOffset = null;
-      _textDragByWord = false;
+      _textDragMode = _kDragModeChar;
       stopEditing(controller, commit: true);
     }
 
