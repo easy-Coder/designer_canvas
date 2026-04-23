@@ -36,13 +36,17 @@ class InfiniteCanvasDemoPage extends StatefulWidget {
   State<InfiniteCanvasDemoPage> createState() => _InfiniteCanvasDemoPageState();
 }
 
-class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
+class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
+    with SingleTickerProviderStateMixin {
   late final InfiniteCanvasController _controller;
   late final ValueNotifier<CanvasTool> _tool;
   late final InfiniteCanvasGestureConfig _gestureConfig;
   late final DefaultInfiniteCanvasGestureHandler _defaultHandler;
   late final DesignerGestureHandler _designerHandler;
   late final ValueNotifier<ToolStyleDefaults> _toolDefaults;
+  late final FocusNode _canvasFocusNode;
+  late final AnimationController _cursorBlinkController;
+  late final ValueNotifier<bool> _cursorVisible;
 
   @override
   void initState() {
@@ -56,6 +60,25 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
     _controller.camera.moveTo(ui.Offset.zero);
     _controller.camera.setZoomDouble(0.35);
     _toolDefaults = ValueNotifier(const ToolStyleDefaults());
+    _canvasFocusNode = FocusNode(debugLabel: 'canvas-focus');
+    _cursorVisible = ValueNotifier(true);
+    _cursorBlinkController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 550),
+    )..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          _cursorBlinkController.reverse();
+        } else if (status == AnimationStatus.dismissed) {
+          _cursorBlinkController.forward();
+        }
+      })
+      ..addListener(() {
+        final nextVisible = _cursorBlinkController.value > 0.5;
+        if (_cursorVisible.value != nextVisible) {
+          _cursorVisible.value = nextVisible;
+          _designerHandler.updateEditingCaretVisibility(_controller);
+        }
+      });
     _controller.addNode(RectNode(
       center: ui.Offset.zero,
       width: 240,
@@ -86,7 +109,26 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
       toolDefaults: _toolDefaults,
       delegate: _defaultHandler,
       gestureConfig: _gestureConfig,
+      canvasFocusNode: _canvasFocusNode,
+      startCursorBlink: () {
+        _cursorVisible.value = true;
+        _cursorBlinkController
+          ..stop()
+          ..value = 1
+          ..reverse();
+      },
+      stopCursorBlink: () {
+        _cursorBlinkController.stop();
+        _cursorVisible.value = false;
+      },
+      isCursorVisible: () => _cursorVisible.value,
     );
+    _canvasFocusNode.addListener(() {
+      _designerHandler.handleCanvasFocusChanged(
+        _canvasFocusNode.hasFocus,
+        _controller,
+      );
+    });
   }
 
   void _onNodeDoubleClick(int quadId, CanvasNode node) {
@@ -97,6 +139,10 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
 
   @override
   void dispose() {
+    _designerHandler.dispose();
+    _cursorBlinkController.dispose();
+    _cursorVisible.dispose();
+    _canvasFocusNode.dispose();
     _tool.dispose();
     _toolDefaults.dispose();
     _controller.dispose();
@@ -113,6 +159,7 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
           toolDefaults: _toolDefaults,
           gestureConfig: _gestureConfig,
           gestureHandler: _designerHandler,
+          canvasFocusNode: _canvasFocusNode,
         ),
       ),
     );

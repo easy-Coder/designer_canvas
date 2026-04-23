@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:infinite_canvas/infinite_canvas.dart';
 
+import 'node_styles.dart';
 import 'style_painter.dart';
 
 /// Filled circle in world space; square [RoundedRectCanvasMixin] frame, circle

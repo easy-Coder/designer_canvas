@@ -5,6 +5,7 @@ import 'package:infinite_canvas/infinite_canvas.dart';
 
 import 'canvas_tool.dart';
 import 'node_styles.dart';
+import 'text_node.dart';
 import 'tool_style_defaults.dart';
 
 enum InspectorScope { selectedNode, toolDefaults }
@@ -63,6 +64,10 @@ class _PropertyInspectorState extends State<PropertyInspector> {
       final node = _selectedNode;
       if (node == null) return;
       node.style = style;
+      final quadId = _controller.primaryQuadId;
+      if (quadId != null) {
+        _controller.updateNode(quadId);
+      }
       _controller.requestRepaint();
       return;
     }
@@ -220,6 +225,36 @@ class _PropertyInspectorState extends State<PropertyInspector> {
         onSelectionChanged: (value) {
           if (value.isEmpty) return;
           _applyStyle(style.copyWith(fontStyle: value.first));
+        },
+      ),
+      const SizedBox(height: 12),
+      SegmentedButton<NodeTextLayoutMode>(
+        segments: const [
+          ButtonSegment(
+            value: NodeTextLayoutMode.autoWidthAutoHeight,
+            label: Text('Auto'),
+          ),
+          ButtonSegment(
+            value: NodeTextLayoutMode.fixedSize,
+            label: Text('Fixed'),
+          ),
+        ],
+        selected: {style.layoutMode},
+        onSelectionChanged: (value) {
+          if (value.isEmpty) return;
+          final mode = value.first;
+          var nextStyle = style.copyWith(layoutMode: mode);
+          if (mode == NodeTextLayoutMode.fixedSize &&
+              _scope == InspectorScope.selectedNode) {
+            final node = _selectedNode;
+            if (node is TextNode) {
+              nextStyle = nextStyle.copyWith(
+                fixedWidth: node.rectWidth,
+                fixedHeight: node.rectHeight,
+              );
+            }
+          }
+          _applyStyle(nextStyle);
         },
       ),
       const SizedBox(height: 12),
