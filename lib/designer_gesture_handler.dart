@@ -46,6 +46,9 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
   CanvasTextImeClient? _imeClient;
   String? _editSnapshot;
 
+  @override
+  int? get activeEditingQuadId => _editingText.value?.quadId;
+
   void _applyEditingValue(
     InfiniteCanvasController controller,
     TextEditingValue next,
@@ -216,9 +219,9 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     bool hasFocus,
     InfiniteCanvasController controller,
   ) {
-    if (!hasFocus) {
-      stopEditing(controller, commit: true);
-    }
+    // Keep editing alive even if sidebars temporarily take focus.
+    // Explicit exit paths (outside tap, Escape, IME done/close) still apply.
+    if (!hasFocus && _editingText.value == null) return;
   }
 
   void dispose() {
@@ -476,6 +479,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       final toleranceWorld = 8.0 / controller.camera.zoomDouble;
       final hitBounds = editing.node.bounds.inflate(toleranceWorld);
       if (hitBounds.contains(world)) {
+        canvasFocusNode.requestFocus();
         final position = editing.node.positionForViewportOffset(
           event.localPosition,
           controller.camera,
@@ -571,7 +575,10 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
         stopEditing(controller, commit: false);
         return true;
       }
-      if (event is! KeyDownEvent) return true;
+      if (event is! KeyDownEvent) return false;
+      if (!canvasFocusNode.hasFocus) {
+        canvasFocusNode.requestFocus();
+      }
       final editing = _editingText.value!;
       final value = editing.node.editingValue;
       final key = event.logicalKey;
@@ -593,6 +600,8 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
         _applyEditingValue(controller, next);
         return true;
       }
+      // Let non-navigation/non-delete keys flow to IME so typed characters
+      // are delivered via delta updates.
       return false;
     }
     if (tool.value == CanvasTool.select) {

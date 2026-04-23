@@ -102,6 +102,7 @@ class InfiniteCanvasRepainter implements RePainter {
 
   void _paintSelectionOverlay(ui.Canvas canvas, Camera camera) {
     final zoom = camera.zoomDouble;
+    final activeEditingId = gestureHandler.activeEditingQuadId;
 
     const outlineWorld = 1.0;
     const dashWorld = 8.0;
@@ -148,6 +149,9 @@ class InfiniteCanvasRepainter implements RePainter {
       ..strokeWidth = (1.5 * zoom).clamp(0.5, 6.0);
 
     for (final id in controller.selectedQuadIds) {
+      if (activeEditingId != null && id == activeEditingId) {
+        continue;
+      }
       final n = controller.lookupNode(id);
       if (n == null) continue;
       final vr = camera.globalToLocalRect(n.bounds);
@@ -161,8 +165,20 @@ class InfiniteCanvasRepainter implements RePainter {
       );
     }
 
+    final editingNode = activeEditingId == null
+        ? null
+        : controller.lookupNode(activeEditingId);
+    if (editingNode != null) {
+      final vr = camera.globalToLocalRect(editingNode.bounds);
+      final editingStroke = ui.Paint()
+        ..color = const ui.Color(0xFF42A5F5)
+        ..style = ui.PaintingStyle.stroke
+        ..strokeWidth = (2.0 * zoom).clamp(0.75, 6.0);
+      canvas.drawRect(vr, editingStroke);
+    }
+
     final union = controller.selectedUnionBounds;
-    if (union != null) {
+    if (union != null && activeEditingId == null) {
       final vr = camera.globalToLocalRect(union);
       final boxPaint = ui.Paint()
         ..color = const ui.Color(0x00FFFFFF)

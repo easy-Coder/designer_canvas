@@ -31,6 +31,12 @@ abstract class InfiniteCanvasGestureHandler {
   ) =>
       false;
 
+  /// Optional hook for apps that expose inline editing state.
+  ///
+  /// When non-null, painter overlays can tailor selection chrome for the
+  /// currently edited node (for example, hiding transform handles).
+  int? get activeEditingQuadId => null;
+
   /// Optional wrapper for overlays (minimap, selection chrome). Default is pass-through.
   Widget wrap(
     BuildContext context,
