@@ -24,20 +24,33 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
 
   ui.Offset _anchor;
   String _text;
+  bool _hasGeometry = false;
 
   TextNodeStyle get textStyle => style as TextNodeStyle;
 
   @override
   set style(NodeStyle value) {
     if (value is! TextNodeStyle) return;
-    super.style = value;
+    var next = value;
+    if (_hasGeometry &&
+        textStyle.layoutMode != NodeTextLayoutMode.fixedSize &&
+        value.layoutMode == NodeTextLayoutMode.fixedSize) {
+      next = value.copyWith(
+        fixedWidth: rectWidth,
+        fixedHeight: rectHeight,
+      );
+    }
+    super.style = next;
+    if (_hasGeometry) {
+      _syncGeometry(preserveTopLeft: true);
+    }
   }
 
   double get fontSizeWorld => textStyle.fontSize;
 
   set fontSizeWorld(double value) {
     style = textStyle.copyWith(fontSize: value);
-    _syncGeometry();
+    _syncGeometry(preserveTopLeft: true);
   }
 
   ui.Color get color => textStyle.color;
@@ -96,20 +109,23 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
   String get text => _text;
 
   set text(String value) {
-    _anchor = bounds.topLeft;
+    if (_hasGeometry) {
+      _anchor = bounds.topLeft;
+    }
     _text = value;
     _editingValue = _editingValue.copyWith(
       text: value,
       selection: TextSelection.collapsed(offset: value.length),
       composing: TextRange.empty,
     );
-    _syncGeometry();
+    _syncGeometry(preserveTopLeft: _hasGeometry);
   }
 
   /// Update the displayed text without recalculating the node's frame geometry.
   /// Use this when the user edits text inline so that position, size, rotation,
   /// and any handle transforms are preserved.
   void updateText(String value) {
+    final textChanged = _text != value;
     _text = value;
     final selectionOffset = value.length.clamp(0, value.length);
     _editingValue = TextEditingValue(
@@ -117,6 +133,10 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
       selection: TextSelection.collapsed(offset: selectionOffset),
       composing: TextRange.empty,
     );
+    if (textChanged &&
+        textStyle.layoutMode == NodeTextLayoutMode.autoWidthAutoHeight) {
+      _syncGeometry(preserveTopLeft: true);
+    }
   }
 
   void beginEditing({TextSelection? selection}) {
@@ -141,9 +161,13 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
   }
 
   void applyEditingValue(TextEditingValue value) {
+    final textChanged = _text != value.text;
     _editingValue = value;
     _text = value.text;
-    _syncGeometryFromText();
+    if (textChanged &&
+        textStyle.layoutMode == NodeTextLayoutMode.autoWidthAutoHeight) {
+      _syncGeometry(preserveTopLeft: true);
+    }
   }
 
   TextPainter createTextPainter(double zoom, {String? text}) {
@@ -206,8 +230,14 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
     return tp.getPositionForOffset(localOffset);
   }
 
-  void _syncGeometryFromText() {
+  (double, double) _frameSize() {
     final s = textStyle;
+    if (s.layoutMode == NodeTextLayoutMode.fixedSize) {
+      return (
+        s.fixedWidth.clamp(24.0, 800.0),
+        s.fixedHeight.clamp(fontSizeWorld * 1.35, 800.0),
+      );
+    }
     final painter = TextPainter(
       text: TextSpan(
         text: _text,
@@ -220,43 +250,38 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
         ),
       ),
       textDirection: TextDirection.ltr,
-      textAlign: switch (s.textAlign) {
-        NodeTextAlign.left => TextAlign.left,
-        NodeTextAlign.center => TextAlign.center,
-        NodeTextAlign.right => TextAlign.right,
-      },
-    )..layout(minWidth: 24.0, maxWidth: 800.0);
-    final w = painter.width.clamp(24.0, 800.0);
+    );
+    painter.layout(minWidth: 0, maxWidth: 800.0);
+    final intrinsicWidth = painter.maxIntrinsicWidth;
+    final w = intrinsicWidth.clamp(24.0, 800.0);
+    painter.layout(minWidth: w, maxWidth: w);
     final h = math.max(s.fontSize * 1.35, painter.height);
-    final center = ui.Offset(_anchor.dx + w / 2, _anchor.dy + h / 2);
-    initRoundedRectGeometry(
-      center: center,
-      width: w,
-      height: h,
-      rotationRadians: 0,
-    );
+    return (w, h.clamp(fontSizeWorld * 1.35, 800.0));
   }
 
-  (double, double) _frameSize() {
-    final w = math
-        .min(
-          800.0,
-          math.max(24.0, _text.length * fontSizeWorld * 0.45),
-        )
-        .toDouble();
-    final h = fontSizeWorld * 1.35;
-    return (w, h);
-  }
-
-  void _syncGeometry() {
+  void _syncGeometry({bool preserveTopLeft = false}) {
     final (w, h) = _frameSize();
-    final center = ui.Offset(_anchor.dx + w / 2, _anchor.dy + h / 2);
+    final topLeft = preserveTopLeft && _hasGeometry ? bounds.topLeft : _anchor;
+    final center = ui.Offset(topLeft.dx + w / 2, topLeft.dy + h / 2);
     initRoundedRectGeometry(
       center: center,
       width: w,
       height: h,
-      rotationRadians: 0,
+      rotationRadians: _hasGeometry ? rotationRadians : 0,
     );
+    _hasGeometry = true;
+  }
+
+  @override
+  void endTransformSession() {
+    super.endTransformSession();
+    if (textStyle.layoutMode == NodeTextLayoutMode.fixedSize) {
+      super.style = textStyle.copyWith(
+        fixedWidth: rectWidth,
+        fixedHeight: rectHeight,
+      );
+    }
+    _anchor = bounds.topLeft;
   }
 
   @override

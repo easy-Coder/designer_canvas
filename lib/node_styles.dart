@@ -5,6 +5,7 @@ import 'package:infinite_canvas/infinite_canvas.dart';
 enum NodeTextAlign { left, center, right }
 
 enum NodeTextVerticalAlign { top, center, bottom }
+enum NodeTextLayoutMode { autoWidthAutoHeight, fixedSize }
 
 String _textAlignToJson(NodeTextAlign value) => value.name;
 
@@ -17,12 +18,21 @@ NodeTextAlign _textAlignFromJson(Object? raw) {
 }
 
 String _textVerticalAlignToJson(NodeTextVerticalAlign value) => value.name;
+String _textLayoutModeToJson(NodeTextLayoutMode value) => value.name;
 
 NodeTextVerticalAlign _textVerticalAlignFromJson(Object? raw) {
   final name = raw is String ? raw : NodeTextVerticalAlign.top.name;
   return NodeTextVerticalAlign.values.firstWhere(
     (v) => v.name == name,
     orElse: () => NodeTextVerticalAlign.top,
+  );
+}
+
+NodeTextLayoutMode _textLayoutModeFromJson(Object? raw) {
+  final name = raw is String ? raw : NodeTextLayoutMode.autoWidthAutoHeight.name;
+  return NodeTextLayoutMode.values.firstWhere(
+    (v) => v.name == name,
+    orElse: () => NodeTextLayoutMode.autoWidthAutoHeight,
   );
 }
 
@@ -278,6 +288,9 @@ class TextNodeStyle extends NodeStyle {
     this.fontWeight = 400,
     this.textAlign = NodeTextAlign.left,
     this.verticalAlign = NodeTextVerticalAlign.top,
+    this.layoutMode = NodeTextLayoutMode.autoWidthAutoHeight,
+    this.fixedWidth = 240,
+    this.fixedHeight = 64,
     this.backgroundColor,
     this.backgroundCornerRadius = 0,
     this.shadow,
@@ -292,6 +305,9 @@ class TextNodeStyle extends NodeStyle {
   final int fontWeight;
   final NodeTextAlign textAlign;
   final NodeTextVerticalAlign verticalAlign;
+  final NodeTextLayoutMode layoutMode;
+  final double fixedWidth;
+  final double fixedHeight;
   final ui.Color? backgroundColor;
   final double backgroundCornerRadius;
   final ShadowStyleData? shadow;
@@ -309,6 +325,9 @@ class TextNodeStyle extends NodeStyle {
     int? fontWeight,
     NodeTextAlign? textAlign,
     NodeTextVerticalAlign? verticalAlign,
+    NodeTextLayoutMode? layoutMode,
+    double? fixedWidth,
+    double? fixedHeight,
     ui.Color? backgroundColor,
     bool clearBackgroundColor = false,
     double? backgroundCornerRadius,
@@ -323,6 +342,9 @@ class TextNodeStyle extends NodeStyle {
       fontWeight: fontWeight ?? this.fontWeight,
       textAlign: textAlign ?? this.textAlign,
       verticalAlign: verticalAlign ?? this.verticalAlign,
+      layoutMode: layoutMode ?? this.layoutMode,
+      fixedWidth: fixedWidth ?? this.fixedWidth,
+      fixedHeight: fixedHeight ?? this.fixedHeight,
       backgroundColor: clearBackgroundColor
           ? null
           : (backgroundColor ?? this.backgroundColor),
@@ -343,6 +365,9 @@ class TextNodeStyle extends NodeStyle {
       'fontWeight': fontWeight,
       'textAlign': _textAlignToJson(textAlign),
       'verticalAlign': _textVerticalAlignToJson(verticalAlign),
+      'layoutMode': _textLayoutModeToJson(layoutMode),
+      'fixedWidth': fixedWidth,
+      'fixedHeight': fixedHeight,
       'backgroundColor': backgroundColor?.toARGB32(),
       'backgroundCornerRadius': backgroundCornerRadius,
       'shadow': shadow?.toJson(),
@@ -358,6 +383,9 @@ class TextNodeStyle extends NodeStyle {
       fontWeight: (json['fontWeight'] as num?)?.toInt() ?? 400,
       textAlign: _textAlignFromJson(json['textAlign']),
       verticalAlign: _textVerticalAlignFromJson(json['verticalAlign']),
+      layoutMode: _textLayoutModeFromJson(json['layoutMode']),
+      fixedWidth: (json['fixedWidth'] as num?)?.toDouble() ?? 240,
+      fixedHeight: (json['fixedHeight'] as num?)?.toDouble() ?? 64,
       backgroundColor: (json['backgroundColor'] as num?) == null
           ? null
           : ui.Color((json['backgroundColor'] as num).toInt()),
