@@ -1,8 +1,9 @@
 import 'package:infinite_canvas/infinite_canvas.dart';
 
+import 'package:designer_canvas/src/features/editor/domain/node_entity.dart';
+
 import 'canvas_document_state.dart';
 import 'node_codec.dart';
-import 'node_entity.dart';
 
 class RuntimeIndexBridge {
   RuntimeIndexBridge({

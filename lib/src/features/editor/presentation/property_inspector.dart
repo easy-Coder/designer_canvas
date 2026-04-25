@@ -3,10 +3,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
-import 'canvas_tool.dart';
-import 'node_styles.dart';
-import 'text_node.dart';
-import 'tool_style_defaults.dart';
+import 'package:designer_canvas/src/features/editor/domain/canvas_tool.dart';
+import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/text_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/tool_style_defaults.dart';
 
 enum InspectorScope { selectedNode, toolDefaults }
 

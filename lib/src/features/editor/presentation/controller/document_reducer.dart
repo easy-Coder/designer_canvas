@@ -1,6 +1,6 @@
-import 'canvas_document_state.dart';
-import 'document_ops.dart';
-import 'runtime_index_bridge.dart';
+import 'package:designer_canvas/src/features/editor/data/canvas_document_state.dart';
+import 'package:designer_canvas/src/features/editor/data/runtime_index_bridge.dart';
+import 'package:designer_canvas/src/features/editor/domain/document_ops.dart';
 
 class DocumentReducer {
   DocumentReducer({required this.documentState, required this.runtimeBridge});

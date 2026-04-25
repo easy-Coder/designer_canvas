@@ -1,6 +1,6 @@
-import 'package:designer_canvas/document/canvas_document_state.dart';
-import 'package:designer_canvas/document/document_codec.dart';
-import 'package:designer_canvas/document/node_entity.dart';
+import 'package:designer_canvas/src/features/editor/data/canvas_document_state.dart';
+import 'package:designer_canvas/src/features/editor/data/document_codec.dart';
+import 'package:designer_canvas/src/features/editor/domain/node_entity.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

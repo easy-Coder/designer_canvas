@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
-import 'canvas_tool.dart';
-import 'designer_gesture_handler.dart';
-import 'frame_size_presets.dart';
-import 'property_inspector.dart';
-import 'tool_style_defaults.dart';
+import 'package:designer_canvas/src/features/editor/domain/canvas_tool.dart';
+import 'package:designer_canvas/src/features/editor/domain/frame_size_presets.dart';
+import 'package:designer_canvas/src/features/editor/domain/tool_style_defaults.dart';
+import 'package:designer_canvas/src/features/editor/presentation/controller/designer_gesture_handler.dart';
+import 'package:designer_canvas/src/features/editor/presentation/property_inspector.dart';
 
 class DesignerShell extends StatelessWidget {
   const DesignerShell({

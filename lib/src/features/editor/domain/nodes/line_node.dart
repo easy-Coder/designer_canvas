@@ -3,8 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:infinite_canvas/infinite_canvas.dart';
 
-import 'node_styles.dart';
-import 'style_painter.dart';
+import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
+import 'package:designer_canvas/src/features/editor/domain/style_painter.dart';
 
 /// Line segment as a thin oriented [RoundedRectCanvasMixin] frame.
 class LineNode extends CanvasNode with RoundedRectCanvasMixin {
@@ -15,17 +15,11 @@ class LineNode extends CanvasNode with RoundedRectCanvasMixin {
     String? label,
     this.hitThicknessWorld = 8,
     super.zIndex = 1,
-  }) : super(
-         style: style ?? const LineNodeStyle(),
-         label: label ?? 'Line',
-       ) {
+  }) : super(style: style ?? const LineNodeStyle(), label: label ?? 'Line') {
     final d = end - start;
     final len = d.distance;
     final theta = math.atan2(d.dy, d.dx);
-    final center = ui.Offset(
-      (start.dx + end.dx) / 2,
-      (start.dy + end.dy) / 2,
-    );
+    final center = ui.Offset((start.dx + end.dx) / 2, (start.dy + end.dy) / 2);
     initRoundedRectGeometry(
       center: center,
       width: math.max(len, 1e-6),
@@ -47,17 +41,13 @@ class LineNode extends CanvasNode with RoundedRectCanvasMixin {
   ui.Color get color => lineStyle.stroke.color;
 
   set color(ui.Color value) {
-    style = lineStyle.copyWith(
-      stroke: lineStyle.stroke.copyWith(color: value),
-    );
+    style = lineStyle.copyWith(stroke: lineStyle.stroke.copyWith(color: value));
   }
 
   double get strokeWidthWorld => lineStyle.stroke.width;
 
   set strokeWidthWorld(double value) {
-    style = lineStyle.copyWith(
-      stroke: lineStyle.stroke.copyWith(width: value),
-    );
+    style = lineStyle.copyWith(stroke: lineStyle.stroke.copyWith(width: value));
   }
 
   /// Updates segment geometry in world space (same basis as the constructor).
@@ -65,10 +55,7 @@ class LineNode extends CanvasNode with RoundedRectCanvasMixin {
     final d = end - start;
     final len = d.distance;
     final theta = math.atan2(d.dy, d.dx);
-    final center = ui.Offset(
-      (start.dx + end.dx) / 2,
-      (start.dy + end.dy) / 2,
-    );
+    final center = ui.Offset((start.dx + end.dx) / 2, (start.dy + end.dy) / 2);
     initRoundedRectGeometry(
       center: center,
       width: math.max(len, 1e-6),

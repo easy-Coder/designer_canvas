@@ -59,8 +59,5 @@ void drawStrokePath(
 ui.Paint createShadowPaint(ShadowStyleData shadow) {
   return ui.Paint()
     ..color = shadow.color
-    ..maskFilter = ui.MaskFilter.blur(
-      ui.BlurStyle.normal,
-      shadow.blurRadius,
-    );
+    ..maskFilter = ui.MaskFilter.blur(ui.BlurStyle.normal, shadow.blurRadius);
 }

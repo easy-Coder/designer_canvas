@@ -1,13 +1,13 @@
 import 'dart:ui' as ui;
 
-import 'package:designer_canvas/document/canvas_document_state.dart';
-import 'package:designer_canvas/document/frame_child_motion.dart';
-import 'package:designer_canvas/document/node_codec.dart';
-import 'package:designer_canvas/document/node_entity.dart';
-import 'package:designer_canvas/document/runtime_index_bridge.dart';
-import 'package:designer_canvas/frame_node.dart';
-import 'package:designer_canvas/node_styles.dart';
-import 'package:designer_canvas/rect_node.dart';
+import 'package:designer_canvas/src/features/editor/data/canvas_document_state.dart';
+import 'package:designer_canvas/src/features/editor/data/node_codec.dart';
+import 'package:designer_canvas/src/features/editor/data/runtime_index_bridge.dart';
+import 'package:designer_canvas/src/features/editor/domain/frame_child_motion.dart';
+import 'package:designer_canvas/src/features/editor/domain/node_entity.dart';
+import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/frame_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/rect_node.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 

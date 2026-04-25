@@ -2,9 +2,9 @@ import 'dart:ui' as ui;
 
 import 'package:infinite_canvas/infinite_canvas.dart';
 
-import '../frame_node.dart';
-import 'canvas_document_state.dart';
-import 'runtime_index_bridge.dart';
+import 'package:designer_canvas/src/features/editor/data/canvas_document_state.dart';
+import 'package:designer_canvas/src/features/editor/data/runtime_index_bridge.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/frame_node.dart';
 
 Set<int> propagateFrameChildMotion({
   required InfiniteCanvasController controller,

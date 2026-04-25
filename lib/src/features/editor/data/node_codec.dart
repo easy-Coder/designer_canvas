@@ -1,24 +1,24 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:designer_canvas/src/editor/service/node_id_generator.dart';
+import 'package:designer_canvas/src/features/editor/domain/node_entity.dart';
+import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/circle_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/frame_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/line_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/rect_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/text_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/triangle_node.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
-import 'package:uuid/uuid.dart';
-
-import '../circle_node.dart';
-import '../frame_node.dart';
-import '../line_node.dart';
-import '../node_styles.dart';
-import '../rect_node.dart';
-import '../text_node.dart';
-import '../triangle_node.dart';
-import 'node_entity.dart';
 
 class NodeCodec {
-  NodeCodec({Uuid? uuidGenerator}) : _uuid = uuidGenerator ?? const Uuid();
+  NodeCodec({NodeIdGenerator? idGenerator})
+    : _idGenerator = idGenerator ?? NodeIdGenerator();
 
-  final Uuid _uuid;
+  final NodeIdGenerator _idGenerator;
 
-  NodeId newNodeId() => _uuid.v4();
+  NodeId newNodeId() => _idGenerator.nextId();
 
   NodeEntity entityFromNode(
     CanvasNode node, {
