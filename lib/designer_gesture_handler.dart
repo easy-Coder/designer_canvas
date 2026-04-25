@@ -8,6 +8,8 @@ import 'package:flutter/services.dart';
 import 'canvas_text_ime_client.dart';
 import 'canvas_tool.dart';
 import 'circle_node.dart';
+import 'frame_node.dart';
+import 'frame_size_presets.dart';
 import 'line_node.dart';
 import 'rect_node.dart';
 import 'text_node.dart';
@@ -28,6 +30,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
   DesignerGestureHandler({
     required this.tool,
     required this.toolDefaults,
+    required this.frameSizePreset,
     required this.delegate,
     required this.gestureConfig,
     required this.canvasFocusNode,
@@ -38,6 +41,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
 
   final ValueNotifier<CanvasTool> tool;
   final ValueNotifier<ToolStyleDefaults> toolDefaults;
+  final ValueNotifier<FrameSizePreset> frameSizePreset;
   final DefaultInfiniteCanvasGestureHandler delegate;
   final InfiniteCanvasGestureConfig gestureConfig;
   final FocusNode canvasFocusNode;
@@ -351,6 +355,10 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
   ui.Offset? _placeWorldStart;
   CanvasTool? _placeTool;
   int? _placeQuadId;
+  final Map<int, Set<int>> _frameChildren = <int, Set<int>>{};
+  final Map<int, int> _childToFrame = <int, int>{};
+  final Map<int, ui.Offset> _childLocalPivot = <int, ui.Offset>{};
+  final Map<int, ui.Offset> _framePivotSnapshot = <int, ui.Offset>{};
 
   static ui.Rect _normalizeWorldRect(ui.Offset a, ui.Offset b) {
     return ui.Rect.fromLTRB(
@@ -384,6 +392,175 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     }
   }
 
+  Iterable<(int, FrameNode)> _orderedFrames(
+    InfiniteCanvasController controller,
+  ) {
+    final frames = <(int, FrameNode)>[];
+    for (final (quadId, node) in controller.orderedNodes) {
+      if (node is FrameNode) {
+        frames.add((quadId, node));
+      }
+    }
+    return frames;
+  }
+
+  void _detachChild(int childId) {
+    final oldParent = _childToFrame.remove(childId);
+    _childLocalPivot.remove(childId);
+    if (oldParent == null) return;
+    final children = _frameChildren[oldParent];
+    if (children == null) return;
+    children.remove(childId);
+    if (children.isEmpty) {
+      _frameChildren.remove(oldParent);
+    }
+  }
+
+  bool _isDescendantFrame(int ancestorFrameId, int probeFrameId) {
+    final children = _frameChildren[ancestorFrameId];
+    if (children == null || children.isEmpty) return false;
+    if (children.contains(probeFrameId)) return true;
+    for (final childId in children) {
+      if (_isDescendantFrame(childId, probeFrameId)) return true;
+    }
+    return false;
+  }
+
+  bool _canAssignToFrame(int childId, int frameId) {
+    if (childId == frameId) return false;
+    final currentParent = _childToFrame[frameId];
+    if (currentParent == childId) return false;
+    if (_isDescendantFrame(childId, frameId)) return false;
+    return true;
+  }
+
+  int? _bestContainingFrame(
+    InfiniteCanvasController controller,
+    int childId,
+    CanvasNode childNode,
+  ) {
+    int? bestId;
+    double? bestArea;
+    final childBounds = childNode.bounds;
+    for (final (frameId, frameNode) in _orderedFrames(controller)) {
+      if (!_canAssignToFrame(childId, frameId)) continue;
+      if (!frameNode.bounds.contains(childBounds.topLeft) ||
+          !frameNode.bounds.contains(childBounds.topRight) ||
+          !frameNode.bounds.contains(childBounds.bottomLeft) ||
+          !frameNode.bounds.contains(childBounds.bottomRight)) {
+        continue;
+      }
+      final area = frameNode.bounds.width * frameNode.bounds.height;
+      if (bestArea == null || area < bestArea) {
+        bestArea = area;
+        bestId = frameId;
+      }
+    }
+    return bestId;
+  }
+
+  void _assignChildToFrame(
+    InfiniteCanvasController controller,
+    int childId,
+    int frameId,
+  ) {
+    final childNode = controller.lookupNode(childId);
+    final frameNode = controller.lookupNode(frameId);
+    if (childNode == null || frameNode is! FrameNode) return;
+    _detachChild(childId);
+    _childToFrame[childId] = frameId;
+    (_frameChildren[frameId] ??= <int>{}).add(childId);
+    _childLocalPivot[childId] =
+        childNode.transformPivot - frameNode.transformPivot;
+  }
+
+  void _recomputeMembershipFor(
+    InfiniteCanvasController controller,
+    int nodeId,
+  ) {
+    final node = controller.lookupNode(nodeId);
+    if (node == null) {
+      _detachChild(nodeId);
+      return;
+    }
+    final frameId = _bestContainingFrame(controller, nodeId, node);
+    if (frameId == null) {
+      _detachChild(nodeId);
+      return;
+    }
+    if (_childToFrame[nodeId] == frameId) {
+      final frameNode = controller.lookupNode(frameId);
+      if (frameNode != null) {
+        _childLocalPivot[nodeId] =
+            node.transformPivot - frameNode.transformPivot;
+      }
+      return;
+    }
+    _assignChildToFrame(controller, nodeId, frameId);
+  }
+
+  void _dropStaleRelationships(InfiniteCanvasController controller) {
+    final existing = controller.orderedNodes.map((e) => e.$1).toSet();
+    final staleChildren = _childToFrame.keys
+        .where((id) => !existing.contains(id))
+        .toList();
+    for (final id in staleChildren) {
+      _detachChild(id);
+    }
+    final staleFrames = _frameChildren.keys
+        .where((id) => !existing.contains(id))
+        .toList();
+    for (final frameId in staleFrames) {
+      final children = _frameChildren.remove(frameId);
+      if (children == null) continue;
+      for (final childId in children) {
+        _childToFrame.remove(childId);
+        _childLocalPivot.remove(childId);
+      }
+    }
+  }
+
+  void _moveFrameChildren(InfiniteCanvasController controller) {
+    final moved = <int>{};
+    for (final (frameId, frameNode) in _orderedFrames(controller)) {
+      final currentPivot = frameNode.transformPivot;
+      final previousPivot = _framePivotSnapshot[frameId];
+      _framePivotSnapshot[frameId] = currentPivot;
+      if (previousPivot == null) continue;
+      final children = _frameChildren[frameId];
+      if (children == null || children.isEmpty) continue;
+      for (final childId in children) {
+        final childNode = controller.lookupNode(childId);
+        if (childNode == null) continue;
+        final localPivot = _childLocalPivot[childId];
+        if (localPivot == null) continue;
+        final expectedChildPivot = currentPivot + localPivot;
+        final delta = expectedChildPivot - childNode.transformPivot;
+        if (delta.distanceSquared < 1e-12) continue;
+        childNode.translateWorld(delta);
+        moved.add(childId);
+      }
+    }
+    if (moved.isNotEmpty) {
+      controller.relayoutNodes(moved);
+    }
+  }
+
+  void _syncFrameGroupingAfterInteraction(
+    InfiniteCanvasController controller, {
+    bool recomputeMembership = false,
+  }) {
+    _dropStaleRelationships(controller);
+    _moveFrameChildren(controller);
+    if (recomputeMembership) {
+      for (final (nodeId, node) in controller.orderedNodes) {
+        if (node is FrameNode) continue;
+        _recomputeMembershipFor(controller, nodeId);
+      }
+      _dropStaleRelationships(controller);
+    }
+  }
+
   void _beginPreviewNode(
     InfiniteCanvasController controller,
     ui.Offset start,
@@ -395,6 +572,20 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
         break;
       case CanvasTool.text:
         break;
+      case CanvasTool.frame:
+        final spec = frameSizePresetSpecs[frameSizePreset.value]!;
+        final r = ui.Rect.fromCenter(
+          center: start,
+          width: spec.size.width,
+          height: spec.size.height,
+        );
+        _placeQuadId = controller.addNode(
+          FrameNode.fromAxisAlignedRect(
+            r,
+            style: toolDefaults.value.frame,
+            zIndex: 0,
+          ),
+        );
       case CanvasTool.rect:
         final r = ui.Rect.fromCenter(center: start, width: eps, height: eps);
         _placeQuadId = controller.addNode(
@@ -452,6 +643,11 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       case CanvasTool.select:
       case CanvasTool.text:
         break;
+      case CanvasTool.frame:
+        (node as FrameNode).setAxisAlignedWorldRect(
+          _normalizeWorldRect(start, end),
+        );
+        controller.updateNode(id);
       case CanvasTool.rect:
         (node as RectNode).setAxisAlignedWorldRect(
           _normalizeWorldRect(start, end),
@@ -488,6 +684,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     if (t == null) return true;
     switch (t) {
       case CanvasTool.rect:
+      case CanvasTool.frame:
       case CanvasTool.circle:
       case CanvasTool.triangle:
         final r = _normalizeWorldRect(start, end);
@@ -536,6 +733,13 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
 
     if (t == CanvasTool.line) {
       _applyPreviewGeometry(controller, start, end, lineFinalize: true);
+      controller.selectSingle(id);
+      _switchToSelectTool();
+      controller.requestRepaint();
+      return;
+    }
+
+    if (t == CanvasTool.frame && (end - start).distance <= slop) {
       controller.selectSingle(id);
       _switchToSelectTool();
       controller.requestRepaint();
@@ -715,6 +919,12 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
 
     if (tool.value == CanvasTool.select) {
       delegate.handlePointerEvent(event, controller);
+      final shouldRecomputeMembership =
+          event is PointerUpEvent || event is PointerCancelEvent;
+      _syncFrameGroupingAfterInteraction(
+        controller,
+        recomputeMembership: shouldRecomputeMembership,
+      );
       return;
     }
 
@@ -769,6 +979,10 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           event.localPosition.dy,
         );
         _finalizePlacement(controller, start, upWorld);
+        _syncFrameGroupingAfterInteraction(
+          controller,
+          recomputeMembership: true,
+        );
       }
       _clearPlacement();
       return;
@@ -779,6 +993,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       if (id != null) {
         controller.removeNode(id);
       }
+      _syncFrameGroupingAfterInteraction(controller, recomputeMembership: true);
       _clearPlacement();
       return;
     }

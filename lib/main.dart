@@ -6,6 +6,7 @@ import 'package:infinite_canvas/infinite_canvas.dart';
 import 'canvas_tool.dart';
 import 'designer_shell.dart';
 import 'designer_gesture_handler.dart';
+import 'frame_size_presets.dart';
 import 'node_styles.dart';
 import 'rect_node.dart';
 import 'text_node.dart';
@@ -44,6 +45,7 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
   late final DefaultInfiniteCanvasGestureHandler _defaultHandler;
   late final DesignerGestureHandler _designerHandler;
   late final ValueNotifier<ToolStyleDefaults> _toolDefaults;
+  late final ValueNotifier<FrameSizePreset> _frameSizePreset;
   late final FocusNode _canvasFocusNode;
   late final AnimationController _cursorBlinkController;
   late final ValueNotifier<bool> _cursorVisible;
@@ -60,41 +62,48 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
     _controller.camera.moveTo(ui.Offset.zero);
     _controller.camera.setZoomDouble(0.35);
     _toolDefaults = ValueNotifier(const ToolStyleDefaults());
+    _frameSizePreset = ValueNotifier(FrameSizePreset.paper);
     _canvasFocusNode = FocusNode(debugLabel: 'canvas-focus');
     _cursorVisible = ValueNotifier(true);
-    _cursorBlinkController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 550),
-    )..addStatusListener((status) {
-        if (status == AnimationStatus.completed) {
-          _cursorBlinkController.reverse();
-        } else if (status == AnimationStatus.dismissed) {
-          _cursorBlinkController.forward();
-        }
-      })
-      ..addListener(() {
-        final nextVisible = _cursorBlinkController.value > 0.5;
-        if (_cursorVisible.value != nextVisible) {
-          _cursorVisible.value = nextVisible;
-          _designerHandler.updateEditingCaretVisibility(_controller);
-        }
-      });
-    _controller.addNode(RectNode(
-      center: ui.Offset.zero,
-      width: 240,
-      height: 160,
-      style: const RectNodeStyle(
-        fill: FillStyleData(color: ui.Color(0xFF2E7D32)),
+    _cursorBlinkController =
+        AnimationController(
+            vsync: this,
+            duration: const Duration(milliseconds: 550),
+          )
+          ..addStatusListener((status) {
+            if (status == AnimationStatus.completed) {
+              _cursorBlinkController.reverse();
+            } else if (status == AnimationStatus.dismissed) {
+              _cursorBlinkController.forward();
+            }
+          })
+          ..addListener(() {
+            final nextVisible = _cursorBlinkController.value > 0.5;
+            if (_cursorVisible.value != nextVisible) {
+              _cursorVisible.value = nextVisible;
+              _designerHandler.updateEditingCaretVisibility(_controller);
+            }
+          });
+    _controller.addNode(
+      RectNode(
+        center: ui.Offset.zero,
+        width: 240,
+        height: 160,
+        style: const RectNodeStyle(
+          fill: FillStyleData(color: ui.Color(0xFF2E7D32)),
+        ),
       ),
-    ));
-    _controller.addNode(RectNode(
-      center: const ui.Offset(130, 90),
-      width: 100,
-      height: 100,
-      style: const RectNodeStyle(
-        fill: FillStyleData(color: ui.Color(0xFF1565C0)),
+    );
+    _controller.addNode(
+      RectNode(
+        center: const ui.Offset(130, 90),
+        width: 100,
+        height: 100,
+        style: const RectNodeStyle(
+          fill: FillStyleData(color: ui.Color(0xFF1565C0)),
+        ),
       ),
-    ));
+    );
 
     _tool = ValueNotifier(CanvasTool.select);
     _gestureConfig = const InfiniteCanvasGestureConfig(
@@ -107,6 +116,7 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
     _designerHandler = DesignerGestureHandler(
       tool: _tool,
       toolDefaults: _toolDefaults,
+      frameSizePreset: _frameSizePreset,
       delegate: _defaultHandler,
       gestureConfig: _gestureConfig,
       canvasFocusNode: _canvasFocusNode,
@@ -145,6 +155,7 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
     _canvasFocusNode.dispose();
     _tool.dispose();
     _toolDefaults.dispose();
+    _frameSizePreset.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -157,6 +168,7 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
           controller: _controller,
           tool: _tool,
           toolDefaults: _toolDefaults,
+          frameSizePreset: _frameSizePreset,
           gestureConfig: _gestureConfig,
           gestureHandler: _designerHandler,
           canvasFocusNode: _canvasFocusNode,
