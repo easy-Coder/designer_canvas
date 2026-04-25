@@ -182,6 +182,8 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
           gestureConfig: _gestureConfig,
           gestureHandler: _designerHandler,
           canvasFocusNode: _canvasFocusNode,
+          documentState: _documentState,
+          runtimeBridge: _runtimeBridge,
         ),
       ),
     );
