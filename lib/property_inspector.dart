@@ -96,11 +96,7 @@ class _PropertyInspectorState extends State<PropertyInspector> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return AnimatedBuilder(
-      animation: Listenable.merge([
-        _controller,
-        widget.tool,
-        _toolDefaults,
-      ]),
+      animation: Listenable.merge([_controller, widget.tool, _toolDefaults]),
       builder: (context, _) {
         _syncControllers();
         final style = _currentStyle;
@@ -136,7 +132,9 @@ class _PropertyInspectorState extends State<PropertyInspector> {
               )
             else ...[
               Text(
-                isSelectedScope ? (node?.label ?? 'Node') : _toolLabel(_activeTool),
+                isSelectedScope
+                    ? (node?.label ?? 'Node')
+                    : _toolLabel(_activeTool),
                 style: theme.textTheme.titleMedium,
               ),
               const SizedBox(height: 8),
@@ -165,6 +163,7 @@ class _PropertyInspectorState extends State<PropertyInspector> {
   List<Widget> _buildControls(BuildContext context, NodeStyle style) {
     if (style is TextNodeStyle) return _buildTextControls(context, style);
     if (style is RectNodeStyle) return _buildRectLikeControls(context, style);
+    if (style is FrameNodeStyle) return _buildFrameControls(context, style);
     if (style is CircleNodeStyle) return _buildCircleControls(context, style);
     if (style is TriangleNodeStyle) {
       return _buildTriangleControls(context, style);
@@ -305,10 +304,7 @@ class _PropertyInspectorState extends State<PropertyInspector> {
       _shadowControls(
         style.shadow,
         onChanged: (shadow) => _applyStyle(
-          style.copyWith(
-            shadow: shadow,
-            clearShadow: shadow == null,
-          ),
+          style.copyWith(shadow: shadow, clearShadow: shadow == null),
         ),
       ),
       const SizedBox(height: 12),
@@ -409,6 +405,27 @@ class _PropertyInspectorState extends State<PropertyInspector> {
     ];
   }
 
+  List<Widget> _buildFrameControls(BuildContext context, FrameNodeStyle style) {
+    return [
+      ..._fillControls(
+        style.fill,
+        onChanged: (fill) => _applyStyle(style.copyWith(fill: fill)),
+      ),
+      ..._strokeControls(
+        style.stroke,
+        onChanged: (stroke) => _applyStyle(
+          style.copyWith(stroke: stroke, clearStroke: stroke == null),
+        ),
+      ),
+      _shadowControls(
+        style.shadow,
+        onChanged: (shadow) => _applyStyle(
+          style.copyWith(shadow: shadow, clearShadow: shadow == null),
+        ),
+      ),
+    ];
+  }
+
   List<Widget> _buildTriangleControls(
     BuildContext context,
     TriangleNodeStyle style,
@@ -453,9 +470,7 @@ class _PropertyInspectorState extends State<PropertyInspector> {
         onSelectionChanged: (value) {
           if (value.isEmpty) return;
           _applyStyle(
-            style.copyWith(
-              stroke: style.stroke.copyWith(cap: value.first),
-            ),
+            style.copyWith(stroke: style.stroke.copyWith(cap: value.first)),
           );
         },
       ),
@@ -470,9 +485,7 @@ class _PropertyInspectorState extends State<PropertyInspector> {
         onSelectionChanged: (value) {
           if (value.isEmpty) return;
           _applyStyle(
-            style.copyWith(
-              stroke: style.stroke.copyWith(join: value.first),
-            ),
+            style.copyWith(stroke: style.stroke.copyWith(join: value.first)),
           );
         },
       ),
@@ -569,7 +582,8 @@ class _PropertyInspectorState extends State<PropertyInspector> {
             value: current.dashLength.clamp(1, 64),
             min: 1,
             max: 64,
-            onChanged: (value) => onChanged(current.copyWith(dashLength: value)),
+            onChanged: (value) =>
+                onChanged(current.copyWith(dashLength: value)),
           ),
           Text('Dash gap: ${current.dashGap.toStringAsFixed(1)}'),
           Slider(
@@ -588,7 +602,8 @@ class _PropertyInspectorState extends State<PropertyInspector> {
     ShadowStyleData? shadow, {
     required ValueChanged<ShadowStyleData?> onChanged,
   }) {
-    final current = shadow ?? const ShadowStyleData(color: ui.Color(0x55000000));
+    final current =
+        shadow ?? const ShadowStyleData(color: ui.Color(0x55000000));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -627,7 +642,8 @@ class _PropertyInspectorState extends State<PropertyInspector> {
             value: current.blurRadius.clamp(0, 50),
             min: 0,
             max: 50,
-            onChanged: (value) => onChanged(current.copyWith(blurRadius: value)),
+            onChanged: (value) =>
+                onChanged(current.copyWith(blurRadius: value)),
           ),
         ],
       ],
@@ -637,6 +653,7 @@ class _PropertyInspectorState extends State<PropertyInspector> {
   static String _toolLabel(CanvasTool t) {
     return switch (t) {
       CanvasTool.select => 'Select tool defaults',
+      CanvasTool.frame => 'Frame defaults',
       CanvasTool.rect => 'Rectangle defaults',
       CanvasTool.circle => 'Circle defaults',
       CanvasTool.triangle => 'Triangle defaults',

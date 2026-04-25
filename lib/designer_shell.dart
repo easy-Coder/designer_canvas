@@ -3,6 +3,7 @@ import 'package:infinite_canvas/infinite_canvas.dart';
 
 import 'canvas_tool.dart';
 import 'designer_gesture_handler.dart';
+import 'frame_size_presets.dart';
 import 'property_inspector.dart';
 import 'tool_style_defaults.dart';
 
@@ -12,6 +13,7 @@ class DesignerShell extends StatelessWidget {
     required this.controller,
     required this.tool,
     required this.toolDefaults,
+    required this.frameSizePreset,
     required this.gestureConfig,
     required this.gestureHandler,
     required this.canvasFocusNode,
@@ -20,6 +22,7 @@ class DesignerShell extends StatelessWidget {
   final InfiniteCanvasController controller;
   final ValueNotifier<CanvasTool> tool;
   final ValueNotifier<ToolStyleDefaults> toolDefaults;
+  final ValueNotifier<FrameSizePreset> frameSizePreset;
   final InfiniteCanvasGestureConfig gestureConfig;
   final DesignerGestureHandler gestureHandler;
   final FocusNode canvasFocusNode;
@@ -77,6 +80,33 @@ class DesignerShell extends StatelessWidget {
                                     onSelected: (_) => tool.value = t,
                                   ),
                                 ],
+                                if (active == CanvasTool.frame) ...[
+                                  const SizedBox(width: 12),
+                                  const Text('Size'),
+                                  const SizedBox(width: 6),
+                                  ValueListenableBuilder<FrameSizePreset>(
+                                    valueListenable: frameSizePreset,
+                                    builder: (context, preset, _) {
+                                      return Wrap(
+                                        spacing: 6,
+                                        children: [
+                                          for (final option
+                                              in FrameSizePreset.values)
+                                            ChoiceChip(
+                                              label: Text(
+                                                frameSizePresetSpecs[option]!
+                                                    .label,
+                                              ),
+                                              selected: preset == option,
+                                              onSelected: (_) {
+                                                frameSizePreset.value = option;
+                                              },
+                                            ),
+                                        ],
+                                      );
+                                    },
+                                  ),
+                                ],
                               ],
                             ),
                           );
@@ -109,6 +139,7 @@ class DesignerShell extends StatelessWidget {
   static String _toolLabel(CanvasTool t) {
     return switch (t) {
       CanvasTool.select => 'Select',
+      CanvasTool.frame => 'Frame',
       CanvasTool.rect => 'Rect',
       CanvasTool.circle => 'Circle',
       CanvasTool.triangle => 'Triangle',
@@ -120,6 +151,7 @@ class DesignerShell extends StatelessWidget {
   static IconData _toolIcon(CanvasTool t) {
     return switch (t) {
       CanvasTool.select => Icons.near_me_outlined,
+      CanvasTool.frame => Icons.crop_landscape,
       CanvasTool.rect => Icons.crop_square,
       CanvasTool.circle => Icons.circle_outlined,
       CanvasTool.triangle => Icons.change_history,
@@ -160,9 +192,7 @@ class _NodesPanel extends StatelessWidget {
                   final (quadId, node) = nodes[index];
                   final selected = controller.primaryQuadId == quadId;
                   return Card(
-                    color: selected
-                        ? theme.colorScheme.primaryContainer
-                        : null,
+                    color: selected ? theme.colorScheme.primaryContainer : null,
                     child: ListTile(
                       dense: true,
                       title: Text(node.label),
@@ -213,10 +243,7 @@ class _PanelHeader extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Align(
             alignment: Alignment.centerLeft,
-            child: Text(
-              title,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            child: Text(title, style: Theme.of(context).textTheme.titleMedium),
           ),
         ),
       ),

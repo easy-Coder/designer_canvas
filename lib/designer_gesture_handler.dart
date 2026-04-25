@@ -8,6 +8,14 @@ import 'package:flutter/services.dart';
 import 'canvas_text_ime_client.dart';
 import 'canvas_tool.dart';
 import 'circle_node.dart';
+import 'document/canvas_document_state.dart';
+import 'document/document_ops.dart';
+import 'document/document_reducer.dart';
+import 'document/frame_child_motion.dart';
+import 'document/node_entity.dart';
+import 'document/runtime_index_bridge.dart';
+import 'frame_node.dart';
+import 'frame_size_presets.dart';
 import 'line_node.dart';
 import 'rect_node.dart';
 import 'text_node.dart';
@@ -28,6 +36,10 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
   DesignerGestureHandler({
     required this.tool,
     required this.toolDefaults,
+    required this.frameSizePreset,
+    required this.documentState,
+    required this.runtimeBridge,
+    required this.documentReducer,
     required this.delegate,
     required this.gestureConfig,
     required this.canvasFocusNode,
@@ -38,6 +50,10 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
 
   final ValueNotifier<CanvasTool> tool;
   final ValueNotifier<ToolStyleDefaults> toolDefaults;
+  final ValueNotifier<FrameSizePreset> frameSizePreset;
+  final CanvasDocumentState documentState;
+  final RuntimeIndexBridge runtimeBridge;
+  final DocumentReducer documentReducer;
   final DefaultInfiniteCanvasGestureHandler delegate;
   final InfiniteCanvasGestureConfig gestureConfig;
   final FocusNode canvasFocusNode;
@@ -351,6 +367,8 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
   ui.Offset? _placeWorldStart;
   CanvasTool? _placeTool;
   int? _placeQuadId;
+  final Map<String, ui.Offset> _framePivotSnapshotByNodeId =
+      <String, ui.Offset>{};
 
   static ui.Rect _normalizeWorldRect(ui.Offset a, ui.Offset b) {
     return ui.Rect.fromLTRB(
@@ -384,6 +402,225 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     }
   }
 
+  Iterable<(int, FrameNode)> _orderedFrames(
+    InfiniteCanvasController controller,
+  ) {
+    final frames = <(int, FrameNode)>[];
+    for (final (quadId, node) in controller.orderedNodes) {
+      if (node is FrameNode) {
+        frames.add((quadId, node));
+      }
+    }
+    return frames;
+  }
+
+  String? _nodeIdForQuadId(int quadId) => runtimeBridge.nodeIdForQuadId(quadId);
+
+  int? _quadIdForNodeId(String nodeId) => runtimeBridge.quadIdForNodeId(nodeId);
+
+  void _detachChild(int childId) {
+    final childNodeId = _nodeIdForQuadId(childId);
+    if (childNodeId == null) return;
+    if (documentState.parentOf(childNodeId) == null) return;
+    documentReducer.dispatch(NodeReparented(nodeId: childNodeId));
+  }
+
+  bool _isDescendantFrame(int ancestorFrameId, int probeFrameId) {
+    final ancestorNodeId = _nodeIdForQuadId(ancestorFrameId);
+    final probeNodeId = _nodeIdForQuadId(probeFrameId);
+    if (ancestorNodeId == null || probeNodeId == null) return false;
+    return documentState.isDescendantOf(ancestorNodeId, probeNodeId);
+  }
+
+  bool _canAssignToFrame(int childId, int frameId) {
+    if (childId == frameId) return false;
+    final childNodeId = _nodeIdForQuadId(childId);
+    final frameNodeId = _nodeIdForQuadId(frameId);
+    if (childNodeId == null || frameNodeId == null) return false;
+    final frameParentNodeId = documentState.parentOf(frameNodeId);
+    final frameParentQuadId = frameParentNodeId == null
+        ? null
+        : _quadIdForNodeId(frameParentNodeId);
+    if (frameParentQuadId == childId) return false;
+    if (_isDescendantFrame(childId, frameId)) return false;
+    return true;
+  }
+
+  int? _bestContainingFrame(
+    InfiniteCanvasController controller,
+    int childId,
+    CanvasNode childNode,
+  ) {
+    int? bestId;
+    double? bestArea;
+    final childBounds = childNode.bounds;
+    for (final (frameId, frameNode) in _orderedFrames(controller)) {
+      if (!_canAssignToFrame(childId, frameId)) continue;
+      if (!frameNode.bounds.contains(childBounds.topLeft) ||
+          !frameNode.bounds.contains(childBounds.topRight) ||
+          !frameNode.bounds.contains(childBounds.bottomLeft) ||
+          !frameNode.bounds.contains(childBounds.bottomRight)) {
+        continue;
+      }
+      final area = frameNode.bounds.width * frameNode.bounds.height;
+      if (bestArea == null || area < bestArea) {
+        bestArea = area;
+        bestId = frameId;
+      }
+    }
+    return bestId;
+  }
+
+  void _assignChildToFrame(
+    InfiniteCanvasController controller,
+    int childId,
+    int frameId,
+  ) {
+    final childNode = controller.lookupNode(childId);
+    final frameNode = controller.lookupNode(frameId);
+    if (childNode == null || frameNode is! FrameNode) return;
+    final childNodeId = _nodeIdForQuadId(childId);
+    final frameNodeId = _nodeIdForQuadId(frameId);
+    if (childNodeId == null || frameNodeId == null) return;
+    documentReducer.dispatch(
+      NodeReparented(
+        nodeId: childNodeId,
+        parentId: frameNodeId,
+        containment: NodeContainmentData(
+          localPivotX:
+              childNode.transformPivot.dx - frameNode.transformPivot.dx,
+          localPivotY:
+              childNode.transformPivot.dy - frameNode.transformPivot.dy,
+        ),
+      ),
+    );
+  }
+
+  void _recomputeMembershipFor(
+    InfiniteCanvasController controller,
+    int nodeId,
+  ) {
+    final node = controller.lookupNode(nodeId);
+    if (node == null) {
+      _detachChild(nodeId);
+      return;
+    }
+    final frameId = _bestContainingFrame(controller, nodeId, node);
+    if (frameId == null) {
+      _detachChild(nodeId);
+      return;
+    }
+    final childNodeId = _nodeIdForQuadId(nodeId);
+    final frameNodeId = _nodeIdForQuadId(frameId);
+    if (childNodeId == null || frameNodeId == null) return;
+    if (documentState.parentOf(childNodeId) == frameNodeId) {
+      final frameNode = controller.lookupNode(frameId);
+      if (frameNode != null) {
+        documentReducer.dispatch(
+          NodeReparented(
+            nodeId: childNodeId,
+            parentId: frameNodeId,
+            containment: NodeContainmentData(
+              localPivotX: node.transformPivot.dx - frameNode.transformPivot.dx,
+              localPivotY: node.transformPivot.dy - frameNode.transformPivot.dy,
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    _assignChildToFrame(controller, nodeId, frameId);
+  }
+
+  void _dropStaleRelationships(InfiniteCanvasController controller) {
+    final stale = runtimeBridge.staleNodeIdsFromController();
+    for (final nodeId in stale) {
+      documentReducer.dispatch(NodeDeleted(nodeId));
+    }
+    final snapshot = documentState.nodesById.values.toList(growable: false);
+    for (final entity in snapshot) {
+      final parentId = entity.parentId;
+      if (parentId != null && !documentState.containsNode(parentId)) {
+        documentReducer.dispatch(NodeReparented(nodeId: entity.id));
+      }
+    }
+  }
+
+  void _moveFrameChildren(InfiniteCanvasController controller) {
+    propagateFrameChildMotion(
+      controller: controller,
+      documentState: documentState,
+      runtimeBridge: runtimeBridge,
+      framePivotSnapshotByNodeId: _framePivotSnapshotByNodeId,
+    );
+  }
+
+  void _sweepFramePivotSnapshots(InfiniteCanvasController controller) {
+    final activeFrameIds = <String>{};
+    for (final (frameQuadId, _) in _orderedFrames(controller)) {
+      final frameNodeId = _nodeIdForQuadId(frameQuadId);
+      if (frameNodeId != null) {
+        activeFrameIds.add(frameNodeId);
+      }
+    }
+    final stale = _framePivotSnapshotByNodeId.keys
+        .where((id) => !activeFrameIds.contains(id))
+        .toList(growable: false);
+    for (final id in stale) {
+      _framePivotSnapshotByNodeId.remove(id);
+    }
+  }
+
+  void _syncFrameGroupingAfterInteraction(
+    InfiniteCanvasController controller, {
+    bool recomputeMembership = false,
+  }) {
+    _dropStaleRelationships(controller);
+    _moveFrameChildren(controller);
+    _syncDocumentGeometryFromRuntime(controller);
+    _sweepFramePivotSnapshots(controller);
+    if (recomputeMembership) {
+      for (final (nodeId, node) in controller.orderedNodes) {
+        if (node is FrameNode) continue;
+        _recomputeMembershipFor(controller, nodeId);
+      }
+      _dropStaleRelationships(controller);
+    }
+  }
+
+  void _syncDocumentGeometryFromRuntime(InfiniteCanvasController controller) {
+    var changed = false;
+    final mapped = runtimeBridge.nodeIdByQuadId.entries.toList();
+    for (final entry in mapped) {
+      final quadId = entry.key;
+      final nodeId = entry.value;
+      final node = controller.lookupNode(quadId);
+      if (node == null) continue;
+      final current = documentState.nodeById(nodeId);
+      final entity = runtimeBridge.nodeCodec.entityFromNode(
+        node,
+        nodeId: nodeId,
+        parentId: current?.parentId,
+        containment: current?.containment,
+      );
+      documentState.upsertNode(entity, notify: false);
+      changed = true;
+    }
+    if (changed) {
+      documentState.emitChange();
+    }
+  }
+
+  int _commitRuntimeNodeCreation(
+    InfiniteCanvasController controller,
+    int quadId,
+  ) {
+    if (controller.lookupNode(quadId) == null) return quadId;
+    final nodeId = runtimeBridge.nodeCodec.newNodeId();
+    runtimeBridge.promoteRuntimeNodeAsEntity(quadId, nodeId: nodeId);
+    return runtimeBridge.quadIdForNodeId(nodeId) ?? quadId;
+  }
+
   void _beginPreviewNode(
     InfiniteCanvasController controller,
     ui.Offset start,
@@ -395,6 +632,20 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
         break;
       case CanvasTool.text:
         break;
+      case CanvasTool.frame:
+        final spec = frameSizePresetSpecs[frameSizePreset.value]!;
+        final r = ui.Rect.fromCenter(
+          center: start,
+          width: spec.size.width,
+          height: spec.size.height,
+        );
+        _placeQuadId = controller.addNode(
+          FrameNode.fromAxisAlignedRect(
+            r,
+            style: toolDefaults.value.frame,
+            zIndex: 0,
+          ),
+        );
       case CanvasTool.rect:
         final r = ui.Rect.fromCenter(center: start, width: eps, height: eps);
         _placeQuadId = controller.addNode(
@@ -452,6 +703,11 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       case CanvasTool.select:
       case CanvasTool.text:
         break;
+      case CanvasTool.frame:
+        (node as FrameNode).setAxisAlignedWorldRect(
+          _normalizeWorldRect(start, end),
+        );
+        controller.updateNode(id);
       case CanvasTool.rect:
         (node as RectNode).setAxisAlignedWorldRect(
           _normalizeWorldRect(start, end),
@@ -488,6 +744,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     if (t == null) return true;
     switch (t) {
       case CanvasTool.rect:
+      case CanvasTool.frame:
       case CanvasTool.circle:
       case CanvasTool.triangle:
         final r = _normalizeWorldRect(start, end);
@@ -518,10 +775,11 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
             zIndex: 2,
           ),
         );
-        controller.selectSingle(newId);
-        final node = controller.lookupNode(newId);
+        final runtimeQuadId = _commitRuntimeNodeCreation(controller, newId);
+        controller.selectSingle(runtimeQuadId);
+        final node = controller.lookupNode(runtimeQuadId);
         if (node is TextNode) {
-          startEditing(newId, node, controller);
+          startEditing(runtimeQuadId, node, controller);
         }
         _switchToSelectTool();
       }
@@ -536,7 +794,16 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
 
     if (t == CanvasTool.line) {
       _applyPreviewGeometry(controller, start, end, lineFinalize: true);
-      controller.selectSingle(id);
+      final runtimeQuadId = _commitRuntimeNodeCreation(controller, id);
+      controller.selectSingle(runtimeQuadId);
+      _switchToSelectTool();
+      controller.requestRepaint();
+      return;
+    }
+
+    if (t == CanvasTool.frame && (end - start).distance <= slop) {
+      final runtimeQuadId = _commitRuntimeNodeCreation(controller, id);
+      controller.selectSingle(runtimeQuadId);
       _switchToSelectTool();
       controller.requestRepaint();
       return;
@@ -546,7 +813,8 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       controller.removeNode(id);
     } else {
       _applyPreviewGeometry(controller, start, end, lineFinalize: false);
-      controller.selectSingle(id);
+      final runtimeQuadId = _commitRuntimeNodeCreation(controller, id);
+      controller.selectSingle(runtimeQuadId);
       _switchToSelectTool();
     }
     controller.requestRepaint();
@@ -715,6 +983,12 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
 
     if (tool.value == CanvasTool.select) {
       delegate.handlePointerEvent(event, controller);
+      final shouldRecomputeMembership =
+          event is PointerUpEvent || event is PointerCancelEvent;
+      _syncFrameGroupingAfterInteraction(
+        controller,
+        recomputeMembership: shouldRecomputeMembership,
+      );
       return;
     }
 
@@ -769,6 +1043,10 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           event.localPosition.dy,
         );
         _finalizePlacement(controller, start, upWorld);
+        _syncFrameGroupingAfterInteraction(
+          controller,
+          recomputeMembership: true,
+        );
       }
       _clearPlacement();
       return;
@@ -779,6 +1057,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       if (id != null) {
         controller.removeNode(id);
       }
+      _syncFrameGroupingAfterInteraction(controller, recomputeMembership: true);
       _clearPlacement();
       return;
     }

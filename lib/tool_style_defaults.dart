@@ -6,6 +6,7 @@ import 'node_styles.dart';
 class ToolStyleDefaults {
   const ToolStyleDefaults({
     this.text = const TextNodeStyle(),
+    this.frame = const FrameNodeStyle(),
     this.rect = const RectNodeStyle(),
     this.circle = const CircleNodeStyle(),
     this.triangle = const TriangleNodeStyle(),
@@ -13,6 +14,7 @@ class ToolStyleDefaults {
   });
 
   final TextNodeStyle text;
+  final FrameNodeStyle frame;
   final RectNodeStyle rect;
   final CircleNodeStyle circle;
   final TriangleNodeStyle triangle;
@@ -21,6 +23,7 @@ class ToolStyleDefaults {
   NodeStyle styleFor(CanvasTool tool) {
     return switch (tool) {
       CanvasTool.text => text,
+      CanvasTool.frame => frame,
       CanvasTool.rect => rect,
       CanvasTool.circle => circle,
       CanvasTool.triangle => triangle,
@@ -31,6 +34,7 @@ class ToolStyleDefaults {
 
   ToolStyleDefaults copyWith({
     TextNodeStyle? text,
+    FrameNodeStyle? frame,
     RectNodeStyle? rect,
     CircleNodeStyle? circle,
     TriangleNodeStyle? triangle,
@@ -38,6 +42,7 @@ class ToolStyleDefaults {
   }) {
     return ToolStyleDefaults(
       text: text ?? this.text,
+      frame: frame ?? this.frame,
       rect: rect ?? this.rect,
       circle: circle ?? this.circle,
       triangle: triangle ?? this.triangle,
@@ -48,11 +53,14 @@ class ToolStyleDefaults {
   ToolStyleDefaults withStyle(CanvasTool tool, NodeStyle style) {
     return switch (tool) {
       CanvasTool.text when style is TextNodeStyle => copyWith(text: style),
+      CanvasTool.frame when style is FrameNodeStyle => copyWith(frame: style),
       CanvasTool.rect when style is RectNodeStyle => copyWith(rect: style),
-      CanvasTool.circle when style is CircleNodeStyle =>
-        copyWith(circle: style),
-      CanvasTool.triangle when style is TriangleNodeStyle =>
-        copyWith(triangle: style),
+      CanvasTool.circle when style is CircleNodeStyle => copyWith(
+        circle: style,
+      ),
+      CanvasTool.triangle when style is TriangleNodeStyle => copyWith(
+        triangle: style,
+      ),
       CanvasTool.line when style is LineNodeStyle => copyWith(line: style),
       _ => this,
     };

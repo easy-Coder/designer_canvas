@@ -5,6 +5,7 @@ import 'package:infinite_canvas/infinite_canvas.dart';
 enum NodeTextAlign { left, center, right }
 
 enum NodeTextVerticalAlign { top, center, bottom }
+
 enum NodeTextLayoutMode { autoWidthAutoHeight, fixedSize }
 
 String _textAlignToJson(NodeTextAlign value) => value.name;
@@ -29,7 +30,9 @@ NodeTextVerticalAlign _textVerticalAlignFromJson(Object? raw) {
 }
 
 NodeTextLayoutMode _textLayoutModeFromJson(Object? raw) {
-  final name = raw is String ? raw : NodeTextLayoutMode.autoWidthAutoHeight.name;
+  final name = raw is String
+      ? raw
+      : NodeTextLayoutMode.autoWidthAutoHeight.name;
   return NodeTextLayoutMode.values.firstWhere(
     (v) => v.name == name,
     orElse: () => NodeTextLayoutMode.autoWidthAutoHeight,
@@ -98,13 +101,70 @@ class RectNodeStyle extends NodeStyle {
         (json['fill'] as Map?)?.cast<String, dynamic>() ??
             {'color': 0xFFE65100},
       ),
-      stroke: (json['stroke'] as Map?)
-          ?.cast<String, dynamic>()
-          .let(StrokeStyleData.fromJson),
-      shadow: (json['shadow'] as Map?)
-          ?.cast<String, dynamic>()
-          .let(ShadowStyleData.fromJson),
+      stroke: (json['stroke'] as Map?)?.cast<String, dynamic>().let(
+        StrokeStyleData.fromJson,
+      ),
+      shadow: (json['shadow'] as Map?)?.cast<String, dynamic>().let(
+        ShadowStyleData.fromJson,
+      ),
       cornerRadius: (json['cornerRadius'] as num?)?.toDouble() ?? 8.0,
+    );
+  }
+}
+
+class FrameNodeStyle extends NodeStyle {
+  const FrameNodeStyle({
+    this.fill = const FillStyleData(color: ui.Color(0x14B0BEC5)),
+    this.stroke = const StrokeStyleData(color: ui.Color(0xFF607D8B), width: 1),
+    this.shadow,
+  });
+
+  static const String kindValue = 'frame';
+
+  final FillStyleData fill;
+  final StrokeStyleData? stroke;
+  final ShadowStyleData? shadow;
+
+  @override
+  String get kind => kindValue;
+
+  @override
+  FrameNodeStyle copyWith({
+    FillStyleData? fill,
+    StrokeStyleData? stroke,
+    ShadowStyleData? shadow,
+    bool clearStroke = false,
+    bool clearShadow = false,
+  }) {
+    return FrameNodeStyle(
+      fill: fill ?? this.fill,
+      stroke: clearStroke ? null : (stroke ?? this.stroke),
+      shadow: clearShadow ? null : (shadow ?? this.shadow),
+    );
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      'kind': kind,
+      'fill': fill.toJson(),
+      'stroke': stroke?.toJson(),
+      'shadow': shadow?.toJson(),
+    };
+  }
+
+  factory FrameNodeStyle.fromJson(Map<String, dynamic> json) {
+    return FrameNodeStyle(
+      fill: FillStyleData.fromJson(
+        (json['fill'] as Map?)?.cast<String, dynamic>() ??
+            {'color': 0x14B0BEC5},
+      ),
+      stroke: (json['stroke'] as Map?)?.cast<String, dynamic>().let(
+        StrokeStyleData.fromJson,
+      ),
+      shadow: (json['shadow'] as Map?)?.cast<String, dynamic>().let(
+        ShadowStyleData.fromJson,
+      ),
     );
   }
 }
@@ -156,12 +216,12 @@ class CircleNodeStyle extends NodeStyle {
         (json['fill'] as Map?)?.cast<String, dynamic>() ??
             {'color': 0xFF7B1FA2},
       ),
-      stroke: (json['stroke'] as Map?)
-          ?.cast<String, dynamic>()
-          .let(StrokeStyleData.fromJson),
-      shadow: (json['shadow'] as Map?)
-          ?.cast<String, dynamic>()
-          .let(ShadowStyleData.fromJson),
+      stroke: (json['stroke'] as Map?)?.cast<String, dynamic>().let(
+        StrokeStyleData.fromJson,
+      ),
+      shadow: (json['shadow'] as Map?)?.cast<String, dynamic>().let(
+        ShadowStyleData.fromJson,
+      ),
     );
   }
 }
@@ -213,12 +273,12 @@ class TriangleNodeStyle extends NodeStyle {
         (json['fill'] as Map?)?.cast<String, dynamic>() ??
             {'color': 0xFF00897B},
       ),
-      stroke: (json['stroke'] as Map?)
-          ?.cast<String, dynamic>()
-          .let(StrokeStyleData.fromJson),
-      shadow: (json['shadow'] as Map?)
-          ?.cast<String, dynamic>()
-          .let(ShadowStyleData.fromJson),
+      stroke: (json['stroke'] as Map?)?.cast<String, dynamic>().let(
+        StrokeStyleData.fromJson,
+      ),
+      shadow: (json['shadow'] as Map?)?.cast<String, dynamic>().let(
+        ShadowStyleData.fromJson,
+      ),
     );
   }
 }
@@ -272,9 +332,9 @@ class LineNodeStyle extends NodeStyle {
               width: 3,
             ).toJson(),
       ),
-      shadow: (json['shadow'] as Map?)
-          ?.cast<String, dynamic>()
-          .let(ShadowStyleData.fromJson),
+      shadow: (json['shadow'] as Map?)?.cast<String, dynamic>().let(
+        ShadowStyleData.fromJson,
+      ),
     );
   }
 }
@@ -391,9 +451,9 @@ class TextNodeStyle extends NodeStyle {
           : ui.Color((json['backgroundColor'] as num).toInt()),
       backgroundCornerRadius:
           (json['backgroundCornerRadius'] as num?)?.toDouble() ?? 0,
-      shadow: (json['shadow'] as Map?)
-          ?.cast<String, dynamic>()
-          .let(ShadowStyleData.fromJson),
+      shadow: (json['shadow'] as Map?)?.cast<String, dynamic>().let(
+        ShadowStyleData.fromJson,
+      ),
     );
   }
 }
