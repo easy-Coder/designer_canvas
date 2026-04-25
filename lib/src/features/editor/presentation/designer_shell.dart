@@ -198,11 +198,13 @@ class _LayersPanelState extends State<_LayersPanel> {
   final FocusNode _renameFocusNode = FocusNode(
     debugLabel: 'layers-rename-focus',
   );
+  final TextEditingController _searchController = TextEditingController();
   final TextEditingController _renameController = TextEditingController();
 
   int? _rangeAnchorQuadId;
   int? _renamingQuadId;
   String? _renameSnapshot;
+  String _searchQuery = '';
 
   InfiniteCanvasController get _controller => widget.controller;
 
@@ -219,6 +221,8 @@ class _LayersPanelState extends State<_LayersPanel> {
         rowsByQuadId[quadId] = _LayerListRow(
           quadId: quadId,
           node: node,
+          nodeId: null,
+          parentNodeId: null,
           depth: 0,
           hasChildren: false,
         );
@@ -227,6 +231,8 @@ class _LayersPanelState extends State<_LayersPanel> {
       rowsByNodeId[nodeId] = _LayerListRow(
         quadId: quadId,
         node: node,
+        nodeId: nodeId,
+        parentNodeId: widget.documentState.parentOf(nodeId),
         depth: 0,
         hasChildren: widget.documentState.childrenOf(nodeId).isNotEmpty,
       );
@@ -295,10 +301,60 @@ class _LayersPanelState extends State<_LayersPanel> {
     return orderedRows;
   }
 
+  List<_LayerListRow> get _visibleRows {
+    final rows = _rows;
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return rows;
+
+    final byNodeId = <String, _LayerListRow>{};
+    for (final row in rows) {
+      final nodeId = row.nodeId;
+      if (nodeId != null) {
+        byNodeId[nodeId] = row;
+      }
+    }
+
+    final keepNodeIds = <String>{};
+    for (final row in rows) {
+      if (!row.node.label.toLowerCase().contains(query)) continue;
+      final nodeId = row.nodeId;
+      if (nodeId == null) continue;
+      keepNodeIds.add(nodeId);
+      var parentId = row.parentNodeId;
+      while (parentId != null && byNodeId.containsKey(parentId)) {
+        if (!keepNodeIds.add(parentId)) break;
+        parentId = byNodeId[parentId]?.parentNodeId;
+      }
+    }
+
+    return rows
+        .where((row) {
+          final nodeId = row.nodeId;
+          if (nodeId == null) {
+            return row.node.label.toLowerCase().contains(query);
+          }
+          return keepNodeIds.contains(nodeId);
+        })
+        .toList(growable: false);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      final next = _searchController.text;
+      if (next == _searchQuery) return;
+      setState(() {
+        _searchQuery = next;
+      });
+    });
+  }
+
   @override
   void dispose() {
     _panelFocusNode.dispose();
     _renameFocusNode.dispose();
+    _searchController.dispose();
     _renameController.dispose();
     super.dispose();
   }
@@ -345,7 +401,7 @@ class _LayersPanelState extends State<_LayersPanel> {
   }
 
   void _moveSelectionBy(int delta, {required bool extendRange}) {
-    final rows = _rows;
+    final rows = _visibleRows;
     if (rows.isEmpty) return;
     final currentPrimary = _controller.primaryQuadId;
     final currentIndex = _rowIndexByQuadId(rows, currentPrimary);
@@ -396,7 +452,7 @@ class _LayersPanelState extends State<_LayersPanel> {
   void _onRowTap(int quadId) {
     _requestPanelFocus();
     if (_isShiftPressed()) {
-      final rows = _rows;
+      final rows = _visibleRows;
       final targetIndex = _rowIndexByQuadId(rows, quadId);
       if (targetIndex != -1) {
         _setRangeSelection(rows, targetIndex);
@@ -442,15 +498,46 @@ class _LayersPanelState extends State<_LayersPanel> {
       child: Column(
         children: [
           const _PanelHeader(title: 'Layers', backgroundColor: Colors.white),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search layers',
+                isDense: true,
+                prefixIcon: const Icon(Icons.search, size: 18),
+                suffixIcon: _searchQuery.trim().isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () => _searchController.clear(),
+                      ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+              ),
+            ),
+          ),
           Expanded(
             child: AnimatedBuilder(
               animation: _controller,
               builder: (context, _) {
-                final rows = _rows;
+                final rows = _visibleRows;
+                if (_renamingQuadId != null &&
+                    !rows.any((row) => row.quadId == _renamingQuadId)) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      _finishRename(commit: true);
+                    }
+                  });
+                }
                 if (rows.isEmpty) {
                   return Center(
                     child: Text(
-                      'No layers yet',
+                      _searchQuery.trim().isEmpty
+                          ? 'No layers yet'
+                          : 'No matching layers',
                       style: theme.textTheme.bodyMedium,
                     ),
                   );
@@ -606,12 +693,16 @@ class _LayerListRow {
   const _LayerListRow({
     required this.quadId,
     required this.node,
+    required this.nodeId,
+    required this.parentNodeId,
     required this.depth,
     required this.hasChildren,
   });
 
   final int quadId;
   final CanvasNode node;
+  final String? nodeId;
+  final String? parentNodeId;
   final int depth;
   final bool hasChildren;
 
@@ -619,6 +710,8 @@ class _LayerListRow {
     return _LayerListRow(
       quadId: quadId,
       node: node,
+      nodeId: nodeId,
+      parentNodeId: parentNodeId,
       depth: depth ?? this.depth,
       hasChildren: hasChildren,
     );
