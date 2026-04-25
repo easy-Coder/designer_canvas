@@ -2,7 +2,7 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
-import 'node_entity.dart';
+import 'package:designer_canvas/src/features/editor/domain/node_entity.dart';
 
 class DocumentSelectionState {
   const DocumentSelectionState({

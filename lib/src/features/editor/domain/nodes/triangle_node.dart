@@ -3,8 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:infinite_canvas/infinite_canvas.dart';
 
-import 'node_styles.dart';
-import 'style_painter.dart';
+import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
+import 'package:designer_canvas/src/features/editor/domain/style_painter.dart';
 
 /// Equilateral triangle inscribed in the mixin frame: `width = side`,
 /// `height = side * sqrt(3) / 2`. [center] / [rectCenter] is the triangle’s

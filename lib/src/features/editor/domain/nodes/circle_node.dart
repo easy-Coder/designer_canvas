@@ -3,8 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:infinite_canvas/infinite_canvas.dart';
 
-import 'node_styles.dart';
-import 'style_painter.dart';
+import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
+import 'package:designer_canvas/src/features/editor/domain/style_painter.dart';
 
 /// Filled circle in world space; square [RoundedRectCanvasMixin] frame, circle
 /// inscribed for drawing and bbox hit testing.
@@ -39,9 +39,7 @@ class CircleNode extends CanvasNode with RoundedRectCanvasMixin {
   ui.Color get color => circleStyle.fill.color;
 
   set color(ui.Color value) {
-    style = circleStyle.copyWith(
-      fill: circleStyle.fill.copyWith(color: value),
-    );
+    style = circleStyle.copyWith(fill: circleStyle.fill.copyWith(color: value));
   }
 
   /// Updates center and radius from world space (used for live placement drag).
@@ -61,7 +59,9 @@ class CircleNode extends CanvasNode with RoundedRectCanvasMixin {
     final s = circleStyle;
     final pivot = context.camera.globalToLocal(rectCenter.dx, rectCenter.dy);
     final r =
-        (rectWidth < rectHeight ? rectWidth : rectHeight) / 2 * context.camera.zoomDouble;
+        (rectWidth < rectHeight ? rectWidth : rectHeight) /
+        2 *
+        context.camera.zoomDouble;
     final shadow = s.shadow;
     if (shadow != null) {
       canvas.save();

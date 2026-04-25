@@ -5,22 +5,21 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'canvas_text_ime_client.dart';
-import 'canvas_tool.dart';
-import 'circle_node.dart';
-import 'document/canvas_document_state.dart';
-import 'document/document_ops.dart';
-import 'document/document_reducer.dart';
-import 'document/frame_child_motion.dart';
-import 'document/node_entity.dart';
-import 'document/runtime_index_bridge.dart';
-import 'frame_node.dart';
-import 'frame_size_presets.dart';
-import 'line_node.dart';
-import 'rect_node.dart';
-import 'text_node.dart';
-import 'tool_style_defaults.dart';
-import 'triangle_node.dart';
+import 'package:designer_canvas/src/features/editor/data/canvas_document_state.dart';
+import 'package:designer_canvas/src/features/editor/data/runtime_index_bridge.dart';
+import 'package:designer_canvas/src/features/editor/domain/canvas_tool.dart';
+import 'package:designer_canvas/src/features/editor/domain/document_ops.dart';
+import 'package:designer_canvas/src/features/editor/domain/frame_child_motion.dart';
+import 'package:designer_canvas/src/features/editor/domain/frame_size_presets.dart';
+import 'package:designer_canvas/src/features/editor/domain/node_entity.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/circle_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/frame_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/line_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/rect_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/text_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/triangle_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/tool_style_defaults.dart';
+import 'package:designer_canvas/src/features/editor/presentation/controller/document_reducer.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
 const int _kPrimaryMouseButton = 0x01;
@@ -88,188 +87,6 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     _imeClient?.updateLocalValue(next);
     controller.updateNode(editing.quadId);
     controller.requestRepaint();
-  }
-
-  int _previousOffset(String text, int offset) {
-    if (offset <= 0) return 0;
-    return offset - 1;
-  }
-
-  int _nextOffset(String text, int offset) {
-    if (offset >= text.length) return text.length;
-    return offset + 1;
-  }
-
-  TextEditingValue _collapseToOffset(TextEditingValue value, int offset) {
-    final clamped = offset.clamp(0, value.text.length);
-    return value.copyWith(selection: TextSelection.collapsed(offset: clamped));
-  }
-
-  TextEditingValue _deleteSelection(TextEditingValue value) {
-    final selection = value.selection;
-    if (!selection.isValid || selection.isCollapsed) return value;
-    final start = math.min(selection.start, selection.end);
-    final end = math.max(selection.start, selection.end);
-    final nextText = value.text.replaceRange(start, end, '');
-    return TextEditingValue(
-      text: nextText,
-      selection: TextSelection.collapsed(offset: start),
-      composing: TextRange.empty,
-    );
-  }
-
-  TextEditingValue _deleteBackward(TextEditingValue value) {
-    final selection = value.selection;
-    if (!selection.isValid) return value;
-    if (!selection.isCollapsed) return _deleteSelection(value);
-    if (selection.extentOffset <= 0) return value;
-    final at = selection.extentOffset;
-    final prev = _previousOffset(value.text, at);
-    final nextText = value.text.replaceRange(prev, at, '');
-    return TextEditingValue(
-      text: nextText,
-      selection: TextSelection.collapsed(offset: prev),
-      composing: TextRange.empty,
-    );
-  }
-
-  TextEditingValue _deleteForward(TextEditingValue value) {
-    final selection = value.selection;
-    if (!selection.isValid) return value;
-    if (!selection.isCollapsed) return _deleteSelection(value);
-    final at = selection.extentOffset;
-    if (at >= value.text.length) return value;
-    final next = _nextOffset(value.text, at);
-    final nextText = value.text.replaceRange(at, next, '');
-    return TextEditingValue(
-      text: nextText,
-      selection: TextSelection.collapsed(offset: at),
-      composing: TextRange.empty,
-    );
-  }
-
-  TextEditingValue _moveHorizontal(
-    TextEditingValue value,
-    bool moveLeft, {
-    required bool expandSelection,
-  }) {
-    final selection = value.selection;
-    if (!selection.isValid) return value;
-    if (expandSelection) {
-      final current = selection.extentOffset;
-      final target = moveLeft
-          ? _previousOffset(value.text, current)
-          : _nextOffset(value.text, current);
-      return value.copyWith(
-        selection: TextSelection(
-          baseOffset: selection.baseOffset,
-          extentOffset: target,
-        ),
-      );
-    }
-    if (!selection.isCollapsed) {
-      final target = moveLeft
-          ? math.min(selection.baseOffset, selection.extentOffset)
-          : math.max(selection.baseOffset, selection.extentOffset);
-      return _collapseToOffset(value, target);
-    }
-    final current = selection.extentOffset;
-    final target = moveLeft
-        ? _previousOffset(value.text, current)
-        : _nextOffset(value.text, current);
-    return _collapseToOffset(value, target);
-  }
-
-  TextEditingValue _moveVertical(
-    TextEditingValue value,
-    TextNode node,
-    CameraView camera,
-    bool moveUp, {
-    required bool expandSelection,
-  }) {
-    final selection = value.selection;
-    if (!selection.isValid) return value;
-    final caretOffset = selection.extentOffset.clamp(0, value.text.length);
-    final painter = node.createTextPainter(camera.zoomDouble, text: value.text);
-    final caret = painter.getOffsetForCaret(
-      TextPosition(offset: caretOffset),
-      ui.Rect.fromLTWH(0, 0, 1, painter.preferredLineHeight),
-    );
-    final dy = moveUp
-        ? -painter.preferredLineHeight
-        : painter.preferredLineHeight;
-    final probe = ui.Offset(caret.dx, caret.dy + dy);
-    final nextPos = painter.getPositionForOffset(probe);
-    if (expandSelection) {
-      return value.copyWith(
-        selection: TextSelection(
-          baseOffset: selection.baseOffset,
-          extentOffset: nextPos.offset,
-        ),
-        composing: value.composing,
-      );
-    }
-    return _collapseToOffset(
-      value,
-      nextPos.offset,
-    ).copyWith(composing: value.composing);
-  }
-
-  bool _isWordBoundaryCodeUnit(int codeUnit) {
-    final c = String.fromCharCode(codeUnit);
-    return !RegExp(r'[A-Za-z0-9_]').hasMatch(c);
-  }
-
-  int _wordStart(String text, int offset) {
-    var i = offset.clamp(0, text.length);
-    while (i > 0 && _isWordBoundaryCodeUnit(text.codeUnitAt(i - 1))) {
-      i--;
-    }
-    while (i > 0 && !_isWordBoundaryCodeUnit(text.codeUnitAt(i - 1))) {
-      i--;
-    }
-    return i;
-  }
-
-  int _wordEnd(String text, int offset) {
-    var i = offset.clamp(0, text.length);
-    while (i < text.length && _isWordBoundaryCodeUnit(text.codeUnitAt(i))) {
-      i++;
-    }
-    while (i < text.length && !_isWordBoundaryCodeUnit(text.codeUnitAt(i))) {
-      i++;
-    }
-    return i;
-  }
-
-  TextSelection _lineSelectionAtOffset(
-    TextNode node,
-    CameraView camera,
-    String text,
-    int offset,
-  ) {
-    final clamped = offset.clamp(0, text.length);
-    final painter = node.createTextPainter(camera.zoomDouble, text: text);
-    final caret = painter.getOffsetForCaret(
-      TextPosition(offset: clamped),
-      ui.Rect.fromLTWH(0, 0, 1, painter.preferredLineHeight),
-    );
-    final metrics = painter.computeLineMetrics();
-    if (metrics.isEmpty) {
-      return TextSelection.collapsed(offset: clamped);
-    }
-    final line = metrics.firstWhere(
-      (m) =>
-          caret.dy >= m.baseline - m.ascent &&
-          caret.dy <= m.baseline + m.descent,
-      orElse: () => metrics.last,
-    );
-    final y = line.baseline - (line.ascent / 2);
-    final start = painter.getPositionForOffset(ui.Offset(0, y)).offset;
-    final end = painter
-        .getPositionForOffset(ui.Offset(painter.width + 1000, y))
-        .offset;
-    return TextSelection(baseOffset: start, extentOffset: end);
   }
 
   /// Start inline editing for [node] at [quadId].
@@ -849,39 +666,46 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           _kDragModeWord =>
             extentOffset >= anchor
                 ? TextSelection(
-                    baseOffset: _wordStart(
+                    baseOffset: wordStart(
                       editing.node.editingValue.text,
                       anchor,
                     ),
-                    extentOffset: _wordEnd(
+                    extentOffset: wordEnd(
                       editing.node.editingValue.text,
                       extentOffset,
                     ),
                   )
                 : TextSelection(
-                    baseOffset: _wordEnd(
+                    baseOffset: wordEnd(
                       editing.node.editingValue.text,
                       anchor,
                     ),
-                    extentOffset: _wordStart(
+                    extentOffset: wordStart(
                       editing.node.editingValue.text,
                       extentOffset,
                     ),
                   ),
-          _kDragModeLine => TextSelection(
-            baseOffset: _lineSelectionAtOffset(
-              editing.node,
-              controller.camera,
-              editing.node.editingValue.text,
+          _kDragModeLine => () {
+            final paintText = editing.node.editingValue.text;
+            final painter = editing.node.createTextPainter(
+              controller.camera.zoomDouble,
+              text: paintText,
+            );
+            final atAnchor = lineSelectionAtOffsetWithPainter(
+              painter,
+              paintText,
               anchor,
-            ).baseOffset,
-            extentOffset: _lineSelectionAtOffset(
-              editing.node,
-              controller.camera,
-              editing.node.editingValue.text,
+            );
+            final atExtent = lineSelectionAtOffsetWithPainter(
+              painter,
+              paintText,
               extentOffset,
-            ).extentOffset,
-          ),
+            );
+            return TextSelection(
+              baseOffset: atAnchor.baseOffset,
+              extentOffset: atExtent.extentOffset,
+            );
+          }(),
           _ => TextSelection(baseOffset: anchor, extentOffset: extentOffset),
         };
         final nextValue = editing.node.editingValue.copyWith(
@@ -937,16 +761,20 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           selection = TextSelection(baseOffset: anchor, extentOffset: offset);
           dragMode = _kDragModeChar;
         } else if (_textClickCount == 2) {
-          final start = _wordStart(editing.node.editingValue.text, offset);
-          final end = _wordEnd(editing.node.editingValue.text, offset);
+          final start = wordStart(editing.node.editingValue.text, offset);
+          final end = wordEnd(editing.node.editingValue.text, offset);
           selection = TextSelection(baseOffset: start, extentOffset: end);
           anchor = start;
           dragMode = _kDragModeWord;
         } else if (_textClickCount == 3) {
-          selection = _lineSelectionAtOffset(
-            editing.node,
-            controller.camera,
-            editing.node.editingValue.text,
+          final paintText = editing.node.editingValue.text;
+          final painter = editing.node.createTextPainter(
+            controller.camera.zoomDouble,
+            text: paintText,
+          );
+          selection = lineSelectionAtOffsetWithPainter(
+            painter,
+            paintText,
             offset,
           );
           anchor = selection.baseOffset;
@@ -1081,29 +909,35 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       final expandSelection = HardwareKeyboard.instance.isShiftPressed;
       TextEditingValue? next;
       if (key == LogicalKeyboardKey.arrowLeft) {
-        next = _moveHorizontal(value, true, expandSelection: expandSelection);
+        next = moveHorizontal(value, true, expandSelection: expandSelection);
       } else if (key == LogicalKeyboardKey.arrowRight) {
-        next = _moveHorizontal(value, false, expandSelection: expandSelection);
+        next = moveHorizontal(value, false, expandSelection: expandSelection);
       } else if (key == LogicalKeyboardKey.arrowUp) {
-        next = _moveVertical(
+        final painter = editing.node.createTextPainter(
+          controller.camera.zoomDouble,
+          text: value.text,
+        );
+        next = moveVerticalWithPainter(
           value,
-          editing.node,
-          controller.camera,
+          painter,
           true,
           expandSelection: expandSelection,
         );
       } else if (key == LogicalKeyboardKey.arrowDown) {
-        next = _moveVertical(
+        final painter = editing.node.createTextPainter(
+          controller.camera.zoomDouble,
+          text: value.text,
+        );
+        next = moveVerticalWithPainter(
           value,
-          editing.node,
-          controller.camera,
+          painter,
           false,
           expandSelection: expandSelection,
         );
       } else if (key == LogicalKeyboardKey.backspace) {
-        next = _deleteBackward(value);
+        next = deleteBackward(value);
       } else if (key == LogicalKeyboardKey.delete) {
-        next = _deleteForward(value);
+        next = deleteForward(value);
       }
       if (next != null) {
         _applyEditingValue(controller, next);

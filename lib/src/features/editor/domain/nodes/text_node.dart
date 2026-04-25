@@ -5,7 +5,7 @@ import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
-import 'node_styles.dart';
+import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
 
 /// Text in a heuristic [RoundedRectCanvasMixin] frame; paint uses [bounds]
 /// top-left after transforms.

@@ -13,4 +13,6 @@ export 'src/node/rounded_rect_canvas_mixin.dart';
 export 'src/util/union_rect_remap.dart';
 export 'src/painter/infinite_canvas_repainter.dart';
 export 'src/selection/selection_handles.dart';
+export 'src/text/canvas_text_ime_client.dart';
+export 'src/text/canvas_text_ops.dart';
 export 'src/widget/infinite_canvas_view.dart';

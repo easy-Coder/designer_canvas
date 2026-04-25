@@ -2,8 +2,8 @@ import 'dart:ui' as ui;
 
 import 'package:infinite_canvas/infinite_canvas.dart';
 
-import 'node_styles.dart';
-import 'style_painter.dart';
+import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
+import 'package:designer_canvas/src/features/editor/domain/style_painter.dart';
 
 /// Filled rounded rectangle in world space; geometry and transforms use
 /// [RoundedRectCanvasMixin], appearance is app-defined in [draw].
@@ -80,10 +80,7 @@ class RectNode extends CanvasNode with RoundedRectCanvasMixin {
   void draw(ui.Canvas canvas, CanvasPaintContext context) {
     super.draw(canvas, context);
     final s = rectStyle;
-    final pivot = context.camera.globalToLocal(
-      rectCenter.dx,
-      rectCenter.dy,
-    );
+    final pivot = context.camera.globalToLocal(rectCenter.dx, rectCenter.dy);
     final hw = rectWidth / 2 * context.camera.zoomDouble;
     final hh = rectHeight / 2 * context.camera.zoomDouble;
     final rPx = s.cornerRadius * context.camera.zoomDouble;
