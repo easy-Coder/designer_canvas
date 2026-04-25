@@ -26,6 +26,8 @@ Set<int> propagateFrameChildMotion({
     final previousPivot = framePivotSnapshotByNodeId[frameNodeId];
     framePivotSnapshotByNodeId[frameNodeId] = currentPivot;
     if (previousPivot == null) continue;
+    final frameDelta = currentPivot - previousPivot;
+    if (frameDelta.distanceSquared < 1e-12) continue;
     final children = documentState.childrenOf(frameNodeId);
     for (final childNodeId in children) {
       final childQuadId = runtimeBridge.quadIdForNodeId(childNodeId);
