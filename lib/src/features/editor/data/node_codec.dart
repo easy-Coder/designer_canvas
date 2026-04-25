@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:designer_canvas/src/editor/service/node_id_generator.dart';
 import 'package:designer_canvas/src/features/editor/domain/node_entity.dart';
 import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/circle_node.dart';
@@ -10,6 +9,7 @@ import 'package:designer_canvas/src/features/editor/domain/nodes/line_node.dart'
 import 'package:designer_canvas/src/features/editor/domain/nodes/rect_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/text_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/triangle_node.dart';
+import 'package:designer_canvas/src/features/editor/service/node_id_generator.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
 class NodeCodec {
