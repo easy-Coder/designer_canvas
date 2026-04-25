@@ -254,6 +254,9 @@ class CanvasDocumentState extends ChangeNotifier {
       if (isDescendantOf(node.id, parentId)) {
         issues.add('cycle:${node.id}:$parentId');
       }
+      if (node.containment == null) {
+        issues.add('missing-containment:${node.id}:$parentId');
+      }
     }
     return issues;
   }

@@ -11,6 +11,7 @@ import 'circle_node.dart';
 import 'document/canvas_document_state.dart';
 import 'document/document_ops.dart';
 import 'document/document_reducer.dart';
+import 'document/frame_child_motion.dart';
 import 'document/node_entity.dart';
 import 'document/runtime_index_bridge.dart';
 import 'frame_node.dart';
@@ -366,7 +367,8 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
   ui.Offset? _placeWorldStart;
   CanvasTool? _placeTool;
   int? _placeQuadId;
-  final Map<int, ui.Offset> _framePivotSnapshot = <int, ui.Offset>{};
+  final Map<String, ui.Offset> _framePivotSnapshotByNodeId =
+      <String, ui.Offset>{};
 
   static ui.Rect _normalizeWorldRect(ui.Offset a, ui.Offset b) {
     return ui.Rect.fromLTRB(
@@ -545,38 +547,27 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
   }
 
   void _moveFrameChildren(InfiniteCanvasController controller) {
-    final moved = <int>{};
-    for (final (frameId, frameNode) in _orderedFrames(controller)) {
-      final currentPivot = frameNode.transformPivot;
-      final previousPivot = _framePivotSnapshot[frameId];
-      _framePivotSnapshot[frameId] = currentPivot;
-      if (previousPivot == null) continue;
-      final frameNodeId = _nodeIdForQuadId(frameId);
-      if (frameNodeId == null) continue;
-      final children = documentState.childrenOf(frameNodeId);
-      if (children.isEmpty) continue;
-      for (final childNodeId in children) {
-        final childId = _quadIdForNodeId(childNodeId);
-        if (childId == null) continue;
-        final childNode = controller.lookupNode(childId);
-        if (childNode == null) continue;
-        final localPivot = documentState
-            .nodeById(childNodeId)
-            ?.containment
-            ?.localPivot;
-        if (localPivot == null) continue;
-        final expectedChildPivot = ui.Offset(
-          currentPivot.dx + localPivot.dx,
-          currentPivot.dy + localPivot.dy,
-        );
-        final delta = expectedChildPivot - childNode.transformPivot;
-        if (delta.distanceSquared < 1e-12) continue;
-        childNode.translateWorld(delta);
-        moved.add(childId);
+    propagateFrameChildMotion(
+      controller: controller,
+      documentState: documentState,
+      runtimeBridge: runtimeBridge,
+      framePivotSnapshotByNodeId: _framePivotSnapshotByNodeId,
+    );
+  }
+
+  void _sweepFramePivotSnapshots(InfiniteCanvasController controller) {
+    final activeFrameIds = <String>{};
+    for (final (frameQuadId, _) in _orderedFrames(controller)) {
+      final frameNodeId = _nodeIdForQuadId(frameQuadId);
+      if (frameNodeId != null) {
+        activeFrameIds.add(frameNodeId);
       }
     }
-    if (moved.isNotEmpty) {
-      controller.relayoutNodes(moved);
+    final stale = _framePivotSnapshotByNodeId.keys
+        .where((id) => !activeFrameIds.contains(id))
+        .toList(growable: false);
+    for (final id in stale) {
+      _framePivotSnapshotByNodeId.remove(id);
     }
   }
 
@@ -584,9 +575,10 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     InfiniteCanvasController controller, {
     bool recomputeMembership = false,
   }) {
-    _syncDocumentGeometryFromRuntime(controller);
     _dropStaleRelationships(controller);
     _moveFrameChildren(controller);
+    _syncDocumentGeometryFromRuntime(controller);
+    _sweepFramePivotSnapshots(controller);
     if (recomputeMembership) {
       for (final (nodeId, node) in controller.orderedNodes) {
         if (node is FrameNode) continue;
