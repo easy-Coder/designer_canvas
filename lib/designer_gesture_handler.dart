@@ -615,11 +615,9 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     InfiniteCanvasController controller,
     int quadId,
   ) {
-    final node = controller.lookupNode(quadId);
-    if (node == null) return quadId;
+    if (controller.lookupNode(quadId) == null) return quadId;
     final nodeId = runtimeBridge.nodeCodec.newNodeId();
-    final entity = runtimeBridge.nodeCodec.entityFromNode(node, nodeId: nodeId);
-    documentReducer.dispatch(NodeCreated(entity));
+    runtimeBridge.promoteRuntimeNodeAsEntity(quadId, nodeId: nodeId);
     return runtimeBridge.quadIdForNodeId(nodeId) ?? quadId;
   }
 
