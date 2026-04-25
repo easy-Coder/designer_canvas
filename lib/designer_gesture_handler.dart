@@ -283,8 +283,8 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     );
     _imeClient!.attach(
       configuration: TextInputConfiguration(
-        inputType: TextInputType.text,
-        inputAction: TextInputAction.done,
+        inputType: TextInputType.multiline,
+        inputAction: TextInputAction.newline,
         enableDeltaModel: true,
         autocorrect: true,
         enableSuggestions: true,
