@@ -8,6 +8,11 @@ import 'package:flutter/services.dart';
 import 'canvas_text_ime_client.dart';
 import 'canvas_tool.dart';
 import 'circle_node.dart';
+import 'document/canvas_document_state.dart';
+import 'document/document_ops.dart';
+import 'document/document_reducer.dart';
+import 'document/node_entity.dart';
+import 'document/runtime_index_bridge.dart';
 import 'frame_node.dart';
 import 'frame_size_presets.dart';
 import 'line_node.dart';
@@ -31,6 +36,9 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     required this.tool,
     required this.toolDefaults,
     required this.frameSizePreset,
+    required this.documentState,
+    required this.runtimeBridge,
+    required this.documentReducer,
     required this.delegate,
     required this.gestureConfig,
     required this.canvasFocusNode,
@@ -42,6 +50,9 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
   final ValueNotifier<CanvasTool> tool;
   final ValueNotifier<ToolStyleDefaults> toolDefaults;
   final ValueNotifier<FrameSizePreset> frameSizePreset;
+  final CanvasDocumentState documentState;
+  final RuntimeIndexBridge runtimeBridge;
+  final DocumentReducer documentReducer;
   final DefaultInfiniteCanvasGestureHandler delegate;
   final InfiniteCanvasGestureConfig gestureConfig;
   final FocusNode canvasFocusNode;
@@ -355,9 +366,6 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
   ui.Offset? _placeWorldStart;
   CanvasTool? _placeTool;
   int? _placeQuadId;
-  final Map<int, Set<int>> _frameChildren = <int, Set<int>>{};
-  final Map<int, int> _childToFrame = <int, int>{};
-  final Map<int, ui.Offset> _childLocalPivot = <int, ui.Offset>{};
   final Map<int, ui.Offset> _framePivotSnapshot = <int, ui.Offset>{};
 
   static ui.Rect _normalizeWorldRect(ui.Offset a, ui.Offset b) {
@@ -404,32 +412,34 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     return frames;
   }
 
+  String? _nodeIdForQuadId(int quadId) => runtimeBridge.nodeIdForQuadId(quadId);
+
+  int? _quadIdForNodeId(String nodeId) => runtimeBridge.quadIdForNodeId(nodeId);
+
   void _detachChild(int childId) {
-    final oldParent = _childToFrame.remove(childId);
-    _childLocalPivot.remove(childId);
-    if (oldParent == null) return;
-    final children = _frameChildren[oldParent];
-    if (children == null) return;
-    children.remove(childId);
-    if (children.isEmpty) {
-      _frameChildren.remove(oldParent);
-    }
+    final childNodeId = _nodeIdForQuadId(childId);
+    if (childNodeId == null) return;
+    if (documentState.parentOf(childNodeId) == null) return;
+    documentReducer.dispatch(NodeReparented(nodeId: childNodeId));
   }
 
   bool _isDescendantFrame(int ancestorFrameId, int probeFrameId) {
-    final children = _frameChildren[ancestorFrameId];
-    if (children == null || children.isEmpty) return false;
-    if (children.contains(probeFrameId)) return true;
-    for (final childId in children) {
-      if (_isDescendantFrame(childId, probeFrameId)) return true;
-    }
-    return false;
+    final ancestorNodeId = _nodeIdForQuadId(ancestorFrameId);
+    final probeNodeId = _nodeIdForQuadId(probeFrameId);
+    if (ancestorNodeId == null || probeNodeId == null) return false;
+    return documentState.isDescendantOf(ancestorNodeId, probeNodeId);
   }
 
   bool _canAssignToFrame(int childId, int frameId) {
     if (childId == frameId) return false;
-    final currentParent = _childToFrame[frameId];
-    if (currentParent == childId) return false;
+    final childNodeId = _nodeIdForQuadId(childId);
+    final frameNodeId = _nodeIdForQuadId(frameId);
+    if (childNodeId == null || frameNodeId == null) return false;
+    final frameParentNodeId = documentState.parentOf(frameNodeId);
+    final frameParentQuadId = frameParentNodeId == null
+        ? null
+        : _quadIdForNodeId(frameParentNodeId);
+    if (frameParentQuadId == childId) return false;
     if (_isDescendantFrame(childId, frameId)) return false;
     return true;
   }
@@ -467,11 +477,21 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     final childNode = controller.lookupNode(childId);
     final frameNode = controller.lookupNode(frameId);
     if (childNode == null || frameNode is! FrameNode) return;
-    _detachChild(childId);
-    _childToFrame[childId] = frameId;
-    (_frameChildren[frameId] ??= <int>{}).add(childId);
-    _childLocalPivot[childId] =
-        childNode.transformPivot - frameNode.transformPivot;
+    final childNodeId = _nodeIdForQuadId(childId);
+    final frameNodeId = _nodeIdForQuadId(frameId);
+    if (childNodeId == null || frameNodeId == null) return;
+    documentReducer.dispatch(
+      NodeReparented(
+        nodeId: childNodeId,
+        parentId: frameNodeId,
+        containment: NodeContainmentData(
+          localPivotX:
+              childNode.transformPivot.dx - frameNode.transformPivot.dx,
+          localPivotY:
+              childNode.transformPivot.dy - frameNode.transformPivot.dy,
+        ),
+      ),
+    );
   }
 
   void _recomputeMembershipFor(
@@ -488,11 +508,22 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       _detachChild(nodeId);
       return;
     }
-    if (_childToFrame[nodeId] == frameId) {
+    final childNodeId = _nodeIdForQuadId(nodeId);
+    final frameNodeId = _nodeIdForQuadId(frameId);
+    if (childNodeId == null || frameNodeId == null) return;
+    if (documentState.parentOf(childNodeId) == frameNodeId) {
       final frameNode = controller.lookupNode(frameId);
       if (frameNode != null) {
-        _childLocalPivot[nodeId] =
-            node.transformPivot - frameNode.transformPivot;
+        documentReducer.dispatch(
+          NodeReparented(
+            nodeId: childNodeId,
+            parentId: frameNodeId,
+            containment: NodeContainmentData(
+              localPivotX: node.transformPivot.dx - frameNode.transformPivot.dx,
+              localPivotY: node.transformPivot.dy - frameNode.transformPivot.dy,
+            ),
+          ),
+        );
       }
       return;
     }
@@ -500,22 +531,15 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
   }
 
   void _dropStaleRelationships(InfiniteCanvasController controller) {
-    final existing = controller.orderedNodes.map((e) => e.$1).toSet();
-    final staleChildren = _childToFrame.keys
-        .where((id) => !existing.contains(id))
-        .toList();
-    for (final id in staleChildren) {
-      _detachChild(id);
+    final stale = runtimeBridge.staleNodeIdsFromController();
+    for (final nodeId in stale) {
+      documentReducer.dispatch(NodeDeleted(nodeId));
     }
-    final staleFrames = _frameChildren.keys
-        .where((id) => !existing.contains(id))
-        .toList();
-    for (final frameId in staleFrames) {
-      final children = _frameChildren.remove(frameId);
-      if (children == null) continue;
-      for (final childId in children) {
-        _childToFrame.remove(childId);
-        _childLocalPivot.remove(childId);
+    final snapshot = documentState.nodesById.values.toList(growable: false);
+    for (final entity in snapshot) {
+      final parentId = entity.parentId;
+      if (parentId != null && !documentState.containsNode(parentId)) {
+        documentReducer.dispatch(NodeReparented(nodeId: entity.id));
       }
     }
   }
@@ -527,14 +551,24 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       final previousPivot = _framePivotSnapshot[frameId];
       _framePivotSnapshot[frameId] = currentPivot;
       if (previousPivot == null) continue;
-      final children = _frameChildren[frameId];
-      if (children == null || children.isEmpty) continue;
-      for (final childId in children) {
+      final frameNodeId = _nodeIdForQuadId(frameId);
+      if (frameNodeId == null) continue;
+      final children = documentState.childrenOf(frameNodeId);
+      if (children.isEmpty) continue;
+      for (final childNodeId in children) {
+        final childId = _quadIdForNodeId(childNodeId);
+        if (childId == null) continue;
         final childNode = controller.lookupNode(childId);
         if (childNode == null) continue;
-        final localPivot = _childLocalPivot[childId];
+        final localPivot = documentState
+            .nodeById(childNodeId)
+            ?.containment
+            ?.localPivot;
         if (localPivot == null) continue;
-        final expectedChildPivot = currentPivot + localPivot;
+        final expectedChildPivot = ui.Offset(
+          currentPivot.dx + localPivot.dx,
+          currentPivot.dy + localPivot.dy,
+        );
         final delta = expectedChildPivot - childNode.transformPivot;
         if (delta.distanceSquared < 1e-12) continue;
         childNode.translateWorld(delta);
@@ -550,6 +584,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     InfiniteCanvasController controller, {
     bool recomputeMembership = false,
   }) {
+    _syncDocumentGeometryFromRuntime(controller);
     _dropStaleRelationships(controller);
     _moveFrameChildren(controller);
     if (recomputeMembership) {
@@ -559,6 +594,41 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       }
       _dropStaleRelationships(controller);
     }
+  }
+
+  void _syncDocumentGeometryFromRuntime(InfiniteCanvasController controller) {
+    var changed = false;
+    final mapped = runtimeBridge.nodeIdByQuadId.entries.toList();
+    for (final entry in mapped) {
+      final quadId = entry.key;
+      final nodeId = entry.value;
+      final node = controller.lookupNode(quadId);
+      if (node == null) continue;
+      final current = documentState.nodeById(nodeId);
+      final entity = runtimeBridge.nodeCodec.entityFromNode(
+        node,
+        nodeId: nodeId,
+        parentId: current?.parentId,
+        containment: current?.containment,
+      );
+      documentState.upsertNode(entity, notify: false);
+      changed = true;
+    }
+    if (changed) {
+      documentState.emitChange();
+    }
+  }
+
+  int _commitRuntimeNodeCreation(
+    InfiniteCanvasController controller,
+    int quadId,
+  ) {
+    final node = controller.lookupNode(quadId);
+    if (node == null) return quadId;
+    final nodeId = runtimeBridge.nodeCodec.newNodeId();
+    final entity = runtimeBridge.nodeCodec.entityFromNode(node, nodeId: nodeId);
+    documentReducer.dispatch(NodeCreated(entity));
+    return runtimeBridge.quadIdForNodeId(nodeId) ?? quadId;
   }
 
   void _beginPreviewNode(
@@ -715,10 +785,11 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
             zIndex: 2,
           ),
         );
-        controller.selectSingle(newId);
-        final node = controller.lookupNode(newId);
+        final runtimeQuadId = _commitRuntimeNodeCreation(controller, newId);
+        controller.selectSingle(runtimeQuadId);
+        final node = controller.lookupNode(runtimeQuadId);
         if (node is TextNode) {
-          startEditing(newId, node, controller);
+          startEditing(runtimeQuadId, node, controller);
         }
         _switchToSelectTool();
       }
@@ -733,14 +804,16 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
 
     if (t == CanvasTool.line) {
       _applyPreviewGeometry(controller, start, end, lineFinalize: true);
-      controller.selectSingle(id);
+      final runtimeQuadId = _commitRuntimeNodeCreation(controller, id);
+      controller.selectSingle(runtimeQuadId);
       _switchToSelectTool();
       controller.requestRepaint();
       return;
     }
 
     if (t == CanvasTool.frame && (end - start).distance <= slop) {
-      controller.selectSingle(id);
+      final runtimeQuadId = _commitRuntimeNodeCreation(controller, id);
+      controller.selectSingle(runtimeQuadId);
       _switchToSelectTool();
       controller.requestRepaint();
       return;
@@ -750,7 +823,8 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       controller.removeNode(id);
     } else {
       _applyPreviewGeometry(controller, start, end, lineFinalize: false);
-      controller.selectSingle(id);
+      final runtimeQuadId = _commitRuntimeNodeCreation(controller, id);
+      controller.selectSingle(runtimeQuadId);
       _switchToSelectTool();
     }
     controller.requestRepaint();
