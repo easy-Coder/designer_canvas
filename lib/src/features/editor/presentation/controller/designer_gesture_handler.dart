@@ -24,6 +24,7 @@ import 'package:designer_canvas/src/features/editor/domain/nodes/text_node.dart'
 
 import 'package:designer_canvas/src/features/editor/domain/tool_style_defaults.dart';
 import 'package:designer_canvas/src/features/editor/presentation/controller/document_reducer.dart';
+import 'package:designer_canvas/src/features/editor/presentation/controller/pending_image_placement.dart';
 import 'package:designer_canvas/src/features/editor/presentation/editor_toolbar_metadata.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
@@ -50,6 +51,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     required this.startCursorBlink,
     required this.stopCursorBlink,
     required this.isCursorVisible,
+    required this.pendingImagePlacement,
     this.onToolActivated,
   });
 
@@ -65,6 +67,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
   final VoidCallback startCursorBlink;
   final VoidCallback stopCursorBlink;
   final bool Function() isCursorVisible;
+  final ValueNotifier<PendingImagePlacement?> pendingImagePlacement;
   final void Function(CanvasTool tool)? onToolActivated;
 
   /// Currently edited text node, or null.
@@ -528,6 +531,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           ),
         );
       case CanvasTool.image:
+        final selectedImage = pendingImagePlacement.value;
         _placeQuadId = controller.addNode(
           ImagePlaceholderNode(
             center: start,
@@ -535,6 +539,10 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
             height: eps,
             style: toolDefaults.value.image,
             zIndex: 2,
+            sourceFileName: selectedImage?.fileName,
+            sourceFilePath: selectedImage?.filePath,
+            intrinsicWidth: selectedImage?.intrinsicWidth,
+            intrinsicHeight: selectedImage?.intrinsicHeight,
           ),
         );
     }
@@ -673,6 +681,36 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     }
 
     if (t == CanvasTool.frame && (end - start).distance <= slop) {
+      final runtimeQuadId = _commitRuntimeNodeCreation(controller, id);
+      controller.selectSingle(runtimeQuadId);
+      _switchToSelectTool();
+      controller.requestRepaint();
+      return;
+    }
+
+    if (t == CanvasTool.image && (end - start).distance <= slop) {
+      final selectedImage = pendingImagePlacement.value;
+      if (selectedImage == null) {
+        controller.removeNode(id);
+        controller.requestRepaint();
+        return;
+      }
+      final clickRect = ui.Rect.fromCenter(
+        center: start,
+        width: selectedImage.intrinsicWidth,
+        height: selectedImage.intrinsicHeight,
+      );
+      final node = controller.lookupNode(id);
+      if (node is ImagePlaceholderNode) {
+        node.setAxisAlignedWorldRect(clickRect);
+        node.setSource(
+          fileName: selectedImage.fileName,
+          filePath: selectedImage.filePath,
+          intrinsicWidth: selectedImage.intrinsicWidth,
+          intrinsicHeight: selectedImage.intrinsicHeight,
+        );
+        controller.updateNode(id);
+      }
       final runtimeQuadId = _commitRuntimeNodeCreation(controller, id);
       controller.selectSingle(runtimeQuadId);
       _switchToSelectTool();
@@ -1001,8 +1039,12 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     if (event is KeyDownEvent) {
       final nextTool = toolForKeyEvent(event);
       if (nextTool != null) {
-        tool.value = nextTool;
-        onToolActivated?.call(nextTool);
+        final activator = onToolActivated;
+        if (activator != null) {
+          activator(nextTool);
+        } else {
+          tool.value = nextTool;
+        }
         canvasFocusNode.requestFocus();
         return true;
       }

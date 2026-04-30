@@ -130,6 +130,10 @@ class NodeCodec {
           'width': node.rectWidth,
           'height': node.rectHeight,
           'rotationRadians': node.rotationRadians,
+          'sourceFileName': node.sourceFileName,
+          'sourceFilePath': node.sourceFilePath,
+          'intrinsicWidth': node.intrinsicWidth,
+          'intrinsicHeight': node.intrinsicHeight,
         },
         style: styleJson,
         parentId: parentId,
@@ -431,6 +435,12 @@ class NodeCodec {
           style: RectNodeStyle.fromJson(entity.style),
           label: entity.label,
           zIndex: entity.zIndex,
+          sourceFileName: entity.geometry['sourceFileName'] as String?,
+          sourceFilePath: entity.geometry['sourceFilePath'] as String?,
+          intrinsicWidth: (entity.geometry['intrinsicWidth'] as num?)
+              ?.toDouble(),
+          intrinsicHeight: (entity.geometry['intrinsicHeight'] as num?)
+              ?.toDouble(),
         );
     }
   }
