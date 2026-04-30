@@ -12,6 +12,7 @@ import 'package:designer_canvas/src/features/editor/domain/tool_style_defaults.d
 import 'package:designer_canvas/src/features/editor/presentation/controller/designer_gesture_handler.dart';
 import 'package:designer_canvas/src/features/editor/presentation/controller/document_reducer.dart';
 import 'package:designer_canvas/src/features/editor/presentation/designer_shell.dart';
+import 'package:designer_canvas/src/features/editor/presentation/editor_toolbar_metadata.dart';
 import 'package:flutter/material.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
@@ -38,6 +39,7 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
   late final NodeCodec _nodeCodec;
   late final RuntimeIndexBridge _runtimeBridge;
   late final DocumentReducer _documentReducer;
+  late final ValueNotifier<Map<EditorToolGroupId, CanvasTool>> _lastUsedByGroup;
 
   @override
   void initState() {
@@ -112,6 +114,9 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
     _runtimeBridge.rebuildFromDocument();
 
     _tool = ValueNotifier(CanvasTool.select);
+    _lastUsedByGroup = ValueNotifier({
+      for (final g in kEditorToolGroups) g.id: g.defaultTool,
+    });
     _gestureConfig = const InfiniteCanvasGestureConfig(
       enableSelection: true,
       enableKeyboardShortcuts: false,
@@ -129,6 +134,7 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
       delegate: _defaultHandler,
       gestureConfig: _gestureConfig,
       canvasFocusNode: _canvasFocusNode,
+      onToolActivated: _setToolbarTool,
       startCursorBlink: () {
         _cursorVisible.value = true;
         _cursorBlinkController
@@ -150,6 +156,16 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
     });
   }
 
+  void _setToolbarTool(CanvasTool t) {
+    _tool.value = t;
+    final gid = groupIdForTool(t);
+    if (gid != null) {
+      final m = Map<EditorToolGroupId, CanvasTool>.from(_lastUsedByGroup.value);
+      m[gid] = t;
+      _lastUsedByGroup.value = m;
+    }
+  }
+
   void _onNodeDoubleClick(int quadId, CanvasNode node) {
     if (node is TextNode) {
       _designerHandler.startEditing(quadId, node, _controller);
@@ -163,6 +179,7 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
     _cursorVisible.dispose();
     _canvasFocusNode.dispose();
     _tool.dispose();
+    _lastUsedByGroup.dispose();
     _toolDefaults.dispose();
     _frameSizePreset.dispose();
     _documentState.dispose();
@@ -184,6 +201,8 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
           canvasFocusNode: _canvasFocusNode,
           documentState: _documentState,
           runtimeBridge: _runtimeBridge,
+          lastUsedByGroup: _lastUsedByGroup,
+          onToolbarToolSelected: _setToolbarTool,
         ),
       ),
     );

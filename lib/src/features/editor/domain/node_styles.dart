@@ -226,34 +226,38 @@ class CircleNodeStyle extends NodeStyle {
   }
 }
 
-class TriangleNodeStyle extends NodeStyle {
-  const TriangleNodeStyle({
+class PolygonNodeStyle extends NodeStyle {
+  const PolygonNodeStyle({
     this.fill = const FillStyleData(color: ui.Color(0xFF00897B)),
     this.stroke,
     this.shadow,
+    this.side = 3,
   });
 
-  static const String kindValue = 'triangle';
+  static const String kindValue = 'polygon';
 
   final FillStyleData fill;
   final StrokeStyleData? stroke;
   final ShadowStyleData? shadow;
+  final int side;
 
   @override
   String get kind => kindValue;
 
   @override
-  TriangleNodeStyle copyWith({
+  PolygonNodeStyle copyWith({
     FillStyleData? fill,
     StrokeStyleData? stroke,
     ShadowStyleData? shadow,
     bool clearStroke = false,
     bool clearShadow = false,
+    int? side,
   }) {
-    return TriangleNodeStyle(
+    return PolygonNodeStyle(
       fill: fill ?? this.fill,
       stroke: clearStroke ? null : (stroke ?? this.stroke),
       shadow: clearShadow ? null : (shadow ?? this.shadow),
+      side: side ?? this.side,
     );
   }
 
@@ -264,11 +268,12 @@ class TriangleNodeStyle extends NodeStyle {
       'fill': fill.toJson(),
       'stroke': stroke?.toJson(),
       'shadow': shadow?.toJson(),
+      'side': side,
     };
   }
 
-  factory TriangleNodeStyle.fromJson(Map<String, dynamic> json) {
-    return TriangleNodeStyle(
+  factory PolygonNodeStyle.fromJson(Map<String, dynamic> json) {
+    return PolygonNodeStyle(
       fill: FillStyleData.fromJson(
         (json['fill'] as Map?)?.cast<String, dynamic>() ??
             {'color': 0xFF00897B},
@@ -279,6 +284,7 @@ class TriangleNodeStyle extends NodeStyle {
       shadow: (json['shadow'] as Map?)?.cast<String, dynamic>().let(
         ShadowStyleData.fromJson,
       ),
+      side: (json['side'] as num?)?.toInt() ?? 3,
     );
   }
 }

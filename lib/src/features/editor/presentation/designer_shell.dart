@@ -4,17 +4,23 @@ import 'package:infinite_canvas/infinite_canvas.dart';
 
 import 'package:designer_canvas/src/features/editor/domain/canvas_tool.dart';
 import 'package:designer_canvas/src/features/editor/domain/frame_size_presets.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/arrow_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/circle_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/frame_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/image_placeholder_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/line_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/polygon_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/rect_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/star_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/text_node.dart';
-import 'package:designer_canvas/src/features/editor/domain/nodes/triangle_node.dart';
+
 import 'package:designer_canvas/src/features/editor/domain/tool_style_defaults.dart';
 import 'package:designer_canvas/src/features/editor/data/canvas_document_state.dart';
 import 'package:designer_canvas/src/features/editor/data/runtime_index_bridge.dart';
 import 'package:designer_canvas/src/features/editor/presentation/controller/designer_gesture_handler.dart';
+import 'package:designer_canvas/src/features/editor/presentation/editor_toolbar_metadata.dart';
 import 'package:designer_canvas/src/features/editor/presentation/property_inspector.dart';
+import 'package:designer_canvas/src/features/editor/presentation/widgets/figma_editor_toolbar.dart';
 
 class DesignerShell extends StatelessWidget {
   const DesignerShell({
@@ -28,6 +34,8 @@ class DesignerShell extends StatelessWidget {
     required this.canvasFocusNode,
     required this.documentState,
     required this.runtimeBridge,
+    required this.lastUsedByGroup,
+    required this.onToolbarToolSelected,
   });
 
   final InfiniteCanvasController controller;
@@ -39,6 +47,8 @@ class DesignerShell extends StatelessWidget {
   final FocusNode canvasFocusNode;
   final CanvasDocumentState documentState;
   final RuntimeIndexBridge runtimeBridge;
+  final ValueNotifier<Map<EditorToolGroupId, CanvasTool>> lastUsedByGroup;
+  final ValueChanged<CanvasTool> onToolbarToolSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -71,65 +81,11 @@ class DesignerShell extends StatelessWidget {
                 alignment: Alignment.bottomCenter,
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 16),
-                  child: Material(
-                    elevation: 4,
-                    borderRadius: BorderRadius.circular(14),
-                    color: scheme.surfaceContainerHigh,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      child: ValueListenableBuilder<CanvasTool>(
-                        valueListenable: tool,
-                        builder: (context, active, _) {
-                          return SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: [
-                                for (final t in CanvasTool.values) ...[
-                                  if (t != CanvasTool.values.first)
-                                    const SizedBox(width: 6),
-                                  FilterChip(
-                                    avatar: Icon(_toolIcon(t), size: 18),
-                                    label: Text(_toolLabel(t)),
-                                    selected: active == t,
-                                    onSelected: (_) => tool.value = t,
-                                  ),
-                                ],
-                                if (active == CanvasTool.frame) ...[
-                                  const SizedBox(width: 12),
-                                  const Text('Size'),
-                                  const SizedBox(width: 6),
-                                  ValueListenableBuilder<FrameSizePreset>(
-                                    valueListenable: frameSizePreset,
-                                    builder: (context, preset, _) {
-                                      return Wrap(
-                                        spacing: 6,
-                                        children: [
-                                          for (final option
-                                              in FrameSizePreset.values)
-                                            ChoiceChip(
-                                              label: Text(
-                                                frameSizePresetSpecs[option]!
-                                                    .label,
-                                              ),
-                                              selected: preset == option,
-                                              onSelected: (_) {
-                                                frameSizePreset.value = option;
-                                              },
-                                            ),
-                                        ],
-                                      );
-                                    },
-                                  ),
-                                ],
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
+                  child: FigmaEditorToolbar(
+                    tool: tool,
+                    lastUsedByGroup: lastUsedByGroup,
+                    frameSizePreset: frameSizePreset,
+                    onToolSelected: onToolbarToolSelected,
                   ),
                 ),
               ),
@@ -151,30 +107,6 @@ class DesignerShell extends StatelessWidget {
         ),
       ],
     );
-  }
-
-  static String _toolLabel(CanvasTool t) {
-    return switch (t) {
-      CanvasTool.select => 'Select',
-      CanvasTool.frame => 'Frame',
-      CanvasTool.rect => 'Rect',
-      CanvasTool.circle => 'Circle',
-      CanvasTool.triangle => 'Triangle',
-      CanvasTool.line => 'Line',
-      CanvasTool.text => 'Text',
-    };
-  }
-
-  static IconData _toolIcon(CanvasTool t) {
-    return switch (t) {
-      CanvasTool.select => Icons.near_me_outlined,
-      CanvasTool.frame => Icons.crop_landscape,
-      CanvasTool.rect => Icons.crop_square,
-      CanvasTool.circle => Icons.circle_outlined,
-      CanvasTool.triangle => Icons.change_history,
-      CanvasTool.line => Icons.horizontal_rule,
-      CanvasTool.text => Icons.text_fields,
-    };
   }
 }
 
@@ -720,9 +652,13 @@ class _LayerListRow {
 
 IconData _layerIcon(CanvasNode node) {
   if (node is FrameNode) return Icons.grid_view_outlined;
+  if (node is PolygonNode) return Icons.hexagon_outlined;
+  if (node is StarNode) return Icons.star_outline;
+  if (node is ImagePlaceholderNode) return Icons.image_outlined;
+  if (node is ArrowNode) return Icons.north_east;
   if (node is RectNode) return Icons.crop_square_outlined;
   if (node is CircleNode) return Icons.circle_outlined;
-  if (node is TriangleNode) return Icons.change_history_outlined;
+
   if (node is LineNode) return Icons.horizontal_rule;
   if (node is TextNode) return Icons.text_fields;
   return Icons.square_outlined;

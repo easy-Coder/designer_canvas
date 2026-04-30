@@ -12,14 +12,19 @@ import 'package:designer_canvas/src/features/editor/domain/document_ops.dart';
 import 'package:designer_canvas/src/features/editor/domain/frame_child_motion.dart';
 import 'package:designer_canvas/src/features/editor/domain/frame_size_presets.dart';
 import 'package:designer_canvas/src/features/editor/domain/node_entity.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/arrow_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/circle_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/frame_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/image_placeholder_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/line_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/polygon_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/rect_node.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/star_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/text_node.dart';
-import 'package:designer_canvas/src/features/editor/domain/nodes/triangle_node.dart';
+
 import 'package:designer_canvas/src/features/editor/domain/tool_style_defaults.dart';
 import 'package:designer_canvas/src/features/editor/presentation/controller/document_reducer.dart';
+import 'package:designer_canvas/src/features/editor/presentation/editor_toolbar_metadata.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
 const int _kPrimaryMouseButton = 0x01;
@@ -45,6 +50,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     required this.startCursorBlink,
     required this.stopCursorBlink,
     required this.isCursorVisible,
+    this.onToolActivated,
   });
 
   final ValueNotifier<CanvasTool> tool;
@@ -59,6 +65,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
   final VoidCallback startCursorBlink;
   final VoidCallback stopCursorBlink;
   final bool Function() isCursorVisible;
+  final void Function(CanvasTool tool)? onToolActivated;
 
   /// Currently edited text node, or null.
   final ValueNotifier<({int quadId, TextNode node})?> _editingText =
@@ -481,21 +488,52 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
             zIndex: 2,
           ),
         );
-      case CanvasTool.triangle:
-        _placeQuadId = controller.addNode(
-          TriangleNode(
-            center: start,
-            side: eps,
-            style: toolDefaults.value.triangle,
-            zIndex: 2,
-          ),
-        );
       case CanvasTool.line:
+      case CanvasTool.pen:
         _placeQuadId = controller.addNode(
           LineNode(
             start: start,
             end: ui.Offset(start.dx + eps, start.dy),
             style: toolDefaults.value.line,
+            zIndex: 2,
+          ),
+        );
+      case CanvasTool.arrow:
+        _placeQuadId = controller.addNode(
+          ArrowNode(
+            start: start,
+            end: ui.Offset(start.dx + eps, start.dy),
+            style: toolDefaults.value.line,
+            zIndex: 2,
+          ),
+        );
+      case CanvasTool.polygon:
+        _placeQuadId = controller.addNode(
+          PolygonNode(
+            center: start,
+            width: eps,
+            height: eps,
+            style: toolDefaults.value.polygon,
+            zIndex: 2,
+          ),
+        );
+      case CanvasTool.star:
+        _placeQuadId = controller.addNode(
+          StarNode(
+            center: start,
+            width: eps,
+            height: eps,
+            style: toolDefaults.value.star,
+            zIndex: 2,
+          ),
+        );
+      case CanvasTool.image:
+        _placeQuadId = controller.addNode(
+          ImagePlaceholderNode(
+            center: start,
+            width: eps,
+            height: eps,
+            style: toolDefaults.value.image,
             zIndex: 2,
           ),
         );
@@ -535,18 +573,30 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
         final radius = math.min(r.width, r.height) / 2;
         (node as CircleNode).setCenterAndRadius(r.center, radius);
         controller.updateNode(id);
-      case CanvasTool.triangle:
-        final r = _normalizeWorldRect(start, end);
-        final side = math.min(r.width, r.height);
-        (node as TriangleNode).setCenterAndSide(r.center, side);
-        controller.updateNode(id);
       case CanvasTool.line:
+      case CanvasTool.pen:
+      case CanvasTool.arrow:
         var a = start;
         var b = end;
         if (lineFinalize && (b - a).distance < minW) {
           b = ui.Offset(a.dx + minW, a.dy);
         }
         (node as LineNode).setWorldEndpoints(a, b);
+        controller.updateNode(id);
+      case CanvasTool.polygon:
+        (node as PolygonNode).setAxisAlignedWorldRect(
+          _normalizeWorldRect(start, end),
+        );
+        controller.updateNode(id);
+      case CanvasTool.star:
+        (node as StarNode).setAxisAlignedWorldRect(
+          _normalizeWorldRect(start, end),
+        );
+        controller.updateNode(id);
+      case CanvasTool.image:
+        (node as ImagePlaceholderNode).setAxisAlignedWorldRect(
+          _normalizeWorldRect(start, end),
+        );
         controller.updateNode(id);
     }
   }
@@ -563,12 +613,16 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       case CanvasTool.rect:
       case CanvasTool.frame:
       case CanvasTool.circle:
-      case CanvasTool.triangle:
+      case CanvasTool.polygon:
+      case CanvasTool.star:
+      case CanvasTool.image:
         final r = _normalizeWorldRect(start, end);
         return r.width < minW || r.height < minW;
       case CanvasTool.select:
       case CanvasTool.text:
       case CanvasTool.line:
+      case CanvasTool.pen:
+      case CanvasTool.arrow:
         return false;
     }
   }
@@ -609,7 +663,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       return;
     }
 
-    if (t == CanvasTool.line) {
+    if (t == CanvasTool.line || t == CanvasTool.pen || t == CanvasTool.arrow) {
       _applyPreviewGeometry(controller, start, end, lineFinalize: true);
       final runtimeQuadId = _commitRuntimeNodeCreation(controller, id);
       controller.selectSingle(runtimeQuadId);
@@ -676,10 +730,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
                     ),
                   )
                 : TextSelection(
-                    baseOffset: wordEnd(
-                      editing.node.editingValue.text,
-                      anchor,
-                    ),
+                    baseOffset: wordEnd(editing.node.editingValue.text, anchor),
                     extentOffset: wordStart(
                       editing.node.editingValue.text,
                       extentOffset,
@@ -946,6 +997,15 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       // Let non-navigation/non-delete keys flow to IME so typed characters
       // are delivered via delta updates.
       return false;
+    }
+    if (event is KeyDownEvent) {
+      final nextTool = toolForKeyEvent(event);
+      if (nextTool != null) {
+        tool.value = nextTool;
+        onToolActivated?.call(nextTool);
+        canvasFocusNode.requestFocus();
+        return true;
+      }
     }
     if (tool.value == CanvasTool.select) {
       return delegate.handleKeyEvent(event, controller);

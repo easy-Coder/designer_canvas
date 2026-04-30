@@ -165,8 +165,8 @@ class _PropertyInspectorState extends State<PropertyInspector> {
     if (style is RectNodeStyle) return _buildRectLikeControls(context, style);
     if (style is FrameNodeStyle) return _buildFrameControls(context, style);
     if (style is CircleNodeStyle) return _buildCircleControls(context, style);
-    if (style is TriangleNodeStyle) {
-      return _buildTriangleControls(context, style);
+    if (style is PolygonNodeStyle) {
+      return _buildPolygonControls(context, style);
     }
     if (style is LineNodeStyle) return _buildLineControls(context, style);
     return [];
@@ -426,11 +426,18 @@ class _PropertyInspectorState extends State<PropertyInspector> {
     ];
   }
 
-  List<Widget> _buildTriangleControls(
+  List<Widget> _buildPolygonControls(
     BuildContext context,
-    TriangleNodeStyle style,
+    PolygonNodeStyle style,
   ) {
     return [
+      Text('Sides: ${style.side}'),
+      Slider(
+        value: style.side.toDouble().clamp(3, 64),
+        min: 3,
+        max: 64,
+        onChanged: (value) => _applyStyle(style.copyWith(side: value.toInt())),
+      ),
       ..._fillControls(
         style.fill,
         onChanged: (fill) => _applyStyle(style.copyWith(fill: fill)),
@@ -656,8 +663,12 @@ class _PropertyInspectorState extends State<PropertyInspector> {
       CanvasTool.frame => 'Frame defaults',
       CanvasTool.rect => 'Rectangle defaults',
       CanvasTool.circle => 'Circle defaults',
-      CanvasTool.triangle => 'Triangle defaults',
       CanvasTool.line => 'Line defaults',
+      CanvasTool.pen => 'Pen defaults',
+      CanvasTool.arrow => 'Arrow defaults',
+      CanvasTool.polygon => 'Polygon defaults',
+      CanvasTool.star => 'Star defaults',
+      CanvasTool.image => 'Image defaults',
       CanvasTool.text => 'Text defaults',
     };
   }

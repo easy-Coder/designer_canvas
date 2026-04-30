@@ -2,7 +2,17 @@ import 'dart:ui' as ui;
 
 typedef NodeId = String;
 
-enum NodeEntityType { rect, frame, circle, triangle, line, text }
+enum NodeEntityType {
+  rect,
+  frame,
+  circle,
+  line,
+  text,
+  arrow,
+  polygon,
+  star,
+  image,
+}
 
 NodeEntityType nodeEntityTypeFromName(String raw) {
   return NodeEntityType.values.firstWhere(
