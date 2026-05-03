@@ -7,13 +7,13 @@ import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
 import 'package:designer_canvas/src/features/editor/domain/style_painter.dart';
 
 /// Placeholder for an image asset (checkerboard + icon).
-class ImagePlaceholderNode extends CanvasNode with RoundedRectCanvasMixin {
+class ImageNode extends CanvasNode with RoundedRectCanvasMixin {
   static final Map<String, ui.Image> _imageCacheByPath = <String, ui.Image>{};
   static final Set<String> _failedImagePaths = <String>{};
   static final Map<String, Future<void>> _loadingByPath =
       <String, Future<void>>{};
 
-  ImagePlaceholderNode({
+  ImageNode({
     required ui.Offset center,
     required double width,
     required double height,
@@ -109,7 +109,8 @@ class ImagePlaceholderNode extends CanvasNode with RoundedRectCanvasMixin {
     const cell = 6.0;
     for (var y = rect.top; y < rect.bottom; y += cell) {
       for (var x = rect.left; x < rect.right; x += cell) {
-        final light = ((x - rect.left) ~/ cell + (y - rect.top) ~/ cell) % 2 == 0;
+        final light =
+            ((x - rect.left) ~/ cell + (y - rect.top) ~/ cell) % 2 == 0;
         final paint = ui.Paint()
           ..color = light
               ? const ui.Color(0xFFE0E0E0)
@@ -126,7 +127,10 @@ class ImagePlaceholderNode extends CanvasNode with RoundedRectCanvasMixin {
   void _drawImageAtlas(ui.Canvas canvas, ui.Image image, ui.Rect targetRect) {
     final imageW = image.width.toDouble();
     final imageH = image.height.toDouble();
-    if (imageW <= 0 || imageH <= 0 || targetRect.width <= 0 || targetRect.height <= 0) {
+    if (imageW <= 0 ||
+        imageH <= 0 ||
+        targetRect.width <= 0 ||
+        targetRect.height <= 0) {
       _drawPlaceholderChecker(canvas, targetRect);
       return;
     }

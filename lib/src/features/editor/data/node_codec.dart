@@ -111,7 +111,7 @@ class NodeCodec {
         containment: containment,
       );
     }
-    if (node is ImagePlaceholderNode) {
+    if (node is ImageNode) {
       return NodeEntity(
         id: id,
         type: NodeEntityType.image,
@@ -423,7 +423,7 @@ class NodeCodec {
           zIndex: entity.zIndex,
         );
       case NodeEntityType.image:
-        return ImagePlaceholderNode(
+        return ImageNode(
           center: ui.Offset(
             (entity.geometry['centerX'] as num?)?.toDouble() ?? 0,
             (entity.geometry['centerY'] as num?)?.toDouble() ?? 0,

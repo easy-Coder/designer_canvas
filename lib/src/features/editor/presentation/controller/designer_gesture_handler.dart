@@ -533,7 +533,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       case CanvasTool.image:
         final selectedImage = pendingImagePlacement.value;
         _placeQuadId = controller.addNode(
-          ImagePlaceholderNode(
+          ImageNode(
             center: start,
             width: eps,
             height: eps,
@@ -602,7 +602,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
         );
         controller.updateNode(id);
       case CanvasTool.image:
-        (node as ImagePlaceholderNode).setAxisAlignedWorldRect(
+        (node as ImageNode).setAxisAlignedWorldRect(
           _normalizeWorldRect(start, end),
         );
         controller.updateNode(id);
@@ -701,7 +701,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
         height: selectedImage.intrinsicHeight,
       );
       final node = controller.lookupNode(id);
-      if (node is ImagePlaceholderNode) {
+      if (node is ImageNode) {
         node.setAxisAlignedWorldRect(clickRect);
         node.setSource(
           fileName: selectedImage.fileName,

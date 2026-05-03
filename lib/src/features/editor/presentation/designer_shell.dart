@@ -654,7 +654,7 @@ IconData _layerIcon(CanvasNode node) {
   if (node is FrameNode) return Icons.grid_view_outlined;
   if (node is PolygonNode) return Icons.hexagon_outlined;
   if (node is StarNode) return Icons.star_outline;
-  if (node is ImagePlaceholderNode) return Icons.image_outlined;
+  if (node is ImageNode) return Icons.image_outlined;
   if (node is ArrowNode) return Icons.north_east;
   if (node is RectNode) return Icons.crop_square_outlined;
   if (node is CircleNode) return Icons.circle_outlined;
