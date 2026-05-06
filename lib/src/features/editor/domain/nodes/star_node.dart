@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:infinite_canvas/infinite_canvas.dart';
 
+import 'package:designer_canvas/src/features/editor/domain/fill_paint.dart';
 import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
 import 'package:designer_canvas/src/features/editor/domain/style_painter.dart';
 
@@ -92,10 +93,24 @@ class StarNode extends CanvasNode with RoundedRectCanvasMixin {
       canvas.drawPath(path, createShadowPaint(shadow));
       canvas.restore();
     }
-    final fill = ui.Paint()
-      ..color = s.fill.color
-      ..style = ui.PaintingStyle.fill;
-    canvas.drawPath(path, fill);
+    final bounds = path.getBounds();
+    if (s.fill.kind == FillKind.image) {
+      final img = imageForFillPath(s.fill.imagePath);
+      canvas.save();
+      canvas.clipPath(path);
+      paintImageFill(
+        canvas: canvas,
+        fill: s.fill,
+        targetRect: bounds,
+        image: img,
+      );
+      canvas.restore();
+    } else {
+      canvas.drawPath(
+        path,
+        createFillPaint(fill: s.fill, shaderRect: bounds),
+      );
+    }
     final stroke = s.stroke;
     if (stroke != null) {
       drawStrokePath(

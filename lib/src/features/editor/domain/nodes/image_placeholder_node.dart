@@ -1,18 +1,14 @@
 import 'dart:ui' as ui;
-import 'dart:io';
 
 import 'package:infinite_canvas/infinite_canvas.dart';
 
+import 'package:designer_canvas/src/features/editor/data/canvas_image_cache.dart';
+import 'package:designer_canvas/src/features/editor/domain/fill_paint.dart';
 import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
 import 'package:designer_canvas/src/features/editor/domain/style_painter.dart';
 
 /// Placeholder for an image asset (checkerboard + icon).
 class ImageNode extends CanvasNode with RoundedRectCanvasMixin {
-  static final Map<String, ui.Image> _imageCacheByPath = <String, ui.Image>{};
-  static final Set<String> _failedImagePaths = <String>{};
-  static final Map<String, Future<void>> _loadingByPath =
-      <String, Future<void>>{};
-
   ImageNode({
     required ui.Offset center,
     required double width,
@@ -66,7 +62,7 @@ class ImageNode extends CanvasNode with RoundedRectCanvasMixin {
     this.intrinsicWidth = intrinsicWidth;
     this.intrinsicHeight = intrinsicHeight;
     if (filePath.isNotEmpty) {
-      _failedImagePaths.remove(filePath);
+      CanvasImageCache.instance.clearFailure(filePath);
     }
   }
 
@@ -75,34 +71,6 @@ class ImageNode extends CanvasNode with RoundedRectCanvasMixin {
     if (raw == null) return null;
     final trimmed = raw.trim();
     return trimmed.isEmpty ? null : trimmed;
-  }
-
-  void _ensureImageLoaded(String path) {
-    if (_imageCacheByPath.containsKey(path) ||
-        _failedImagePaths.contains(path) ||
-        _loadingByPath.containsKey(path)) {
-      return;
-    }
-    _loadingByPath[path] = _loadImage(path);
-  }
-
-  Future<void> _loadImage(String path) async {
-    try {
-      final bytes = await File(path).readAsBytes();
-      if (bytes.isEmpty) {
-        _failedImagePaths.add(path);
-        return;
-      }
-      final codec = await ui.instantiateImageCodec(bytes);
-      final frame = await codec.getNextFrame();
-      _imageCacheByPath[path] = frame.image;
-      _failedImagePaths.remove(path);
-      ui.PlatformDispatcher.instance.scheduleFrame();
-    } catch (_) {
-      _failedImagePaths.add(path);
-    } finally {
-      _loadingByPath.remove(path);
-    }
   }
 
   void _drawPlaceholderChecker(ui.Canvas canvas, ui.Rect rect) {
@@ -186,10 +154,24 @@ class ImageNode extends CanvasNode with RoundedRectCanvasMixin {
     canvas.clipRRect(clip);
 
     final sourcePath = _normalizedSourcePath;
+    final cache = CanvasImageCache.instance;
     if (sourcePath != null) {
-      _ensureImageLoaded(sourcePath);
+      cache.ensureLoaded(sourcePath);
     }
-    final image = sourcePath == null ? null : _imageCacheByPath[sourcePath];
+    final image = sourcePath == null ? null : cache.tryGet(sourcePath);
+    if (s.fill.kind == FillKind.image) {
+      paintImageFill(
+        canvas: canvas,
+        fill: s.fill,
+        targetRect: rect,
+        image: imageForFillPath(s.fill.imagePath),
+      );
+    } else {
+      canvas.drawRRect(
+        clip,
+        createFillPaint(fill: s.fill, shaderRect: rect),
+      );
+    }
     if (image != null) {
       _drawImageAtlas(canvas, image, rect);
     } else {

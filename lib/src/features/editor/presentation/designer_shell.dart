@@ -52,7 +52,6 @@ class DesignerShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Row(
       children: [
         SizedBox(
@@ -93,14 +92,27 @@ class DesignerShell extends StatelessWidget {
           ),
         ),
         SizedBox(
-          width: 280,
-          child: ColoredBox(
-            color: scheme.surfaceContainerHigh,
-            child: _PropertyPanelTitle(
-              child: PropertyInspector(
-                controller: controller,
-                tool: tool,
-                toolDefaults: toolDefaults,
+          width: 300,
+          child: Theme(
+            data: ThemeData(
+              brightness: Brightness.dark,
+              colorScheme: ColorScheme.dark(
+                surface: const Color(0xFF252525),
+                onSurface: const Color(0xFFE8E8E8),
+                primary: const Color(0xFF4A9EFF),
+                onPrimary: Colors.white,
+              ),
+              dividerColor: const Color(0xFF3D3D3D),
+              useMaterial3: true,
+            ),
+            child: ColoredBox(
+              color: const Color(0xFF252525),
+              child: _PropertyPanelTitle(
+                child: PropertyInspector(
+                  controller: controller,
+                  tool: tool,
+                  toolDefaults: toolDefaults,
+                ),
               ),
             ),
           ),
