@@ -10,13 +10,17 @@ import 'package:designer_canvas/src/features/editor/domain/nodes/polygon_node.da
 import 'package:designer_canvas/src/features/editor/domain/nodes/text_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/tool_style_defaults.dart';
 import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_appearance_section.dart';
-import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_color_palette.dart';
 import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_effects_section.dart';
 import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_fill_controls.dart';
+import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_label_section.dart';
+import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_line_section.dart';
+import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_polygon_section.dart';
 import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_position_layout_section.dart';
+import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_section.dart';
 import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_selection_helpers.dart';
 import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_stroke_controls.dart';
 import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_style_compare.dart';
+import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_text_section.dart';
 
 enum InspectorScope { selectedNode, toolDefaults }
 
@@ -282,6 +286,11 @@ class _PropertyInspectorState extends State<PropertyInspector> {
             ? null
             : (fill0.swatchColor.a).clamp(0.0, 1.0);
 
+        final strokeControlsEnabled =
+            isTool || nodes.any(nodeSupportsStroke);
+        final allowStrokeDisable = !isTool && primary is! LineNode;
+        final typeSection = _typeSpecificSection(context, style, isTool);
+
         return Theme(
           data: dark,
           child: ListView(
@@ -307,24 +316,21 @@ class _PropertyInspectorState extends State<PropertyInspector> {
               ),
               const SizedBox(height: 12),
               Text(title, style: dark.textTheme.titleMedium),
-              const Divider(height: 24),
-              if (isSel && primary != null) ...[
-                TextField(
-                  controller: _labelController,
-                  style: dark.textTheme.bodyLarge,
-                  decoration: const InputDecoration(
-                    labelText: 'Label',
-                    border: OutlineInputBorder(),
+              const SizedBox(height: 8),
+              if (isSel && primary != null)
+                InspectorSection(
+                  title: 'Label',
+                  child: InspectorLabelSection(
+                    controller: _labelController,
+                    textStyle: dark.textTheme.bodyLarge,
+                    onChanged: (value) {
+                      _applyToSelection((n) {
+                        n.label = value.trim().isEmpty ? 'Node' : value.trim();
+                      });
+                    },
                   ),
-                  onChanged: (value) {
-                    _applyToSelection((n) {
-                      n.label = value.trim().isEmpty ? 'Node' : value.trim();
-                    });
-                  },
                 ),
-                const SizedBox(height: 12),
-              ],
-              if (showLayout && cx != null) ...[
+              if (showLayout && cx != null)
                 InspectorPositionLayoutSection(
                   centerX: cx,
                   centerY: cy!,
@@ -355,95 +361,147 @@ class _PropertyInspectorState extends State<PropertyInspector> {
                     );
                   },
                 ),
-                const Divider(height: 24),
-              ],
-              if (style != null && fill0 != null) ...[
-                InspectorAppearanceSection(
-                  showOpacity: true,
-                  opacity01: fillOpacity,
-                  opacityMixed: fillMixed,
-                  onOpacity: (o) {
-                    if (isTool) {
-                      _patchToolStyleOpacity(o);
-                    } else {
-                      _applyToSelection((n) {
-                        final f = readFill(n);
-                        if (f == null) return;
-                        final sw = f.swatchColor;
-                        final next = sw.withAlpha((o * 255).round().clamp(0, 255));
-                        applyFill(n, f.copyWith(color: next));
-                      });
-                    }
-                  },
-                  showCornerRadius: corner != null,
-                  cornerRadius: corner,
-                  cornerMixed: cornerMixed,
-                  onCornerRadius: (r) {
-                    if (isTool) {
-                      _patchToolCornerRadius(r);
-                    } else {
-                      _applyToSelection((n) => applyCornerRadius(n, r));
-                    }
-                  },
-                ),
-                const Divider(height: 24),
-              ],
-              if (fill0 != null)
-                InspectorFillControls(
-                  fill: fill0,
-                  isMixed: fillMixed,
-                  enabled: isTool || mergeFill.isNotEmpty,
-                  solidOnly: !isTool &&
-                      mergeFill.isNotEmpty &&
-                      mergeFill.every((n) => n is TextNode),
-                  palette: _palette,
-                  onChanged: (f) {
-                    if (isTool) {
-                      _patchToolFill(f);
-                    } else {
-                      _applyToSelection((n) {
-                        if (nodeSupportsFill(n)) applyFill(n, f);
-                      });
-                    }
-                  },
-                ),
-              if (fill0 != null) const Divider(height: 24),
-              InspectorStrokeControls(
-                stroke: stroke0,
-                isMixed: strokeMixed,
-                enabled: isTool ||
-                    nodes.any((n) => readStroke(n) != null || n is LineNode),
-                allowDisable: !isTool && primary is! LineNode,
-                palette: _palette,
-                onChanged: (s) {
-                  if (isTool) {
-                    _patchToolStroke(s);
-                  } else {
-                    _applyToSelection((n) {
-                      if (readStroke(n) != null || n is LineNode) {
-                        applyStroke(n, s);
+              if (style != null && fill0 != null)
+                InspectorSection(
+                  title: 'Appearance',
+                  child: InspectorAppearanceSection(
+                    showOpacity: true,
+                    opacity01: fillOpacity,
+                    opacityMixed: fillMixed,
+                    onOpacity: (o) {
+                      if (isTool) {
+                        _patchToolStyleOpacity(o);
+                      } else {
+                        _applyToSelection((n) {
+                          final f = readFill(n);
+                          if (f == null) return;
+                          final sw = f.swatchColor;
+                          final next =
+                              sw.withAlpha((o * 255).round().clamp(0, 255));
+                          applyFill(n, f.copyWith(color: next));
+                        });
                       }
-                    });
-                  }
-                },
+                    },
+                    showCornerRadius: corner != null,
+                    cornerRadius: corner,
+                    cornerMixed: cornerMixed,
+                    onCornerRadius: (r) {
+                      if (isTool) {
+                        _patchToolCornerRadius(r);
+                      } else {
+                        _applyToSelection((n) => applyCornerRadius(n, r));
+                      }
+                    },
+                  ),
+                ),
+              if (fill0 != null)
+                InspectorSection(
+                  title: 'Fill',
+                  trailing: IconButton(
+                    icon: const Icon(Icons.add, size: 20),
+                    onPressed: (isTool || mergeFill.isNotEmpty)
+                        ? () => showInspectorFillPicker(
+                              context,
+                              fill: fill0,
+                              onApply: (f) {
+                                if (isTool) {
+                                  _patchToolFill(f);
+                                } else {
+                                  _applyToSelection((n) {
+                                    if (nodeSupportsFill(n)) applyFill(n, f);
+                                  });
+                                }
+                              },
+                              solidOnly: !isTool &&
+                                  mergeFill.isNotEmpty &&
+                                  mergeFill.every((n) => n is TextNode),
+                              enabled: true,
+                            )
+                        : null,
+                    tooltip: 'Edit fill',
+                  ),
+                  child: InspectorFillControls(
+                    fill: fill0,
+                    isMixed: fillMixed,
+                    enabled: isTool || mergeFill.isNotEmpty,
+                    solidOnly: !isTool &&
+                        mergeFill.isNotEmpty &&
+                        mergeFill.every((n) => n is TextNode),
+                    palette: _palette,
+                    onChanged: (f) {
+                      if (isTool) {
+                        _patchToolFill(f);
+                      } else {
+                        _applyToSelection((n) {
+                          if (nodeSupportsFill(n)) applyFill(n, f);
+                        });
+                      }
+                    },
+                  ),
+                ),
+              InspectorSection(
+                title: 'Stroke',
+                trailing: allowStrokeDisable && strokeControlsEnabled
+                    ? Switch(
+                        value: stroke0 != null,
+                        onChanged: (v) {
+                          const fallback = StrokeStyleData(
+                            color: ui.Color(0xFF111111),
+                            width: 2,
+                          );
+                          final next = v ? (stroke0 ?? fallback) : null;
+                          if (isTool) {
+                            _patchToolStroke(next);
+                          } else {
+                            _applyToSelection((n) {
+                              if (nodeSupportsStroke(n)) {
+                                applyStroke(n, next);
+                              }
+                            });
+                          }
+                        },
+                      )
+                    : null,
+                child: InspectorStrokeControls(
+                  stroke: stroke0,
+                  isMixed: strokeMixed,
+                  enabled: strokeControlsEnabled,
+                  allowDisable: allowStrokeDisable,
+                  palette: _palette,
+                  onChanged: (s) {
+                    if (isTool) {
+                      _patchToolStroke(s);
+                    } else {
+                      _applyToSelection((n) {
+                        if (nodeSupportsStroke(n)) {
+                          applyStroke(n, s);
+                        }
+                      });
+                    }
+                  },
+                ),
               ),
-              const Divider(height: 24),
-              InspectorEffectsSection(
-                shadow: shadow0,
-                isMixedShadow: shadowMixed,
-                palette: _palette,
-                onShadowChanged: (s) {
-                  if (isTool) {
-                    _patchToolShadow(s);
-                  } else {
-                    _applyToSelection((n) => applyShadow(n, s));
-                  }
-                },
+              InspectorSection(
+                title: 'Effects',
+                trailing: IconButton(
+                  icon: const Icon(Icons.add, size: 20),
+                  onPressed: () {},
+                  tooltip: 'More effects (soon)',
+                ),
+                child: InspectorEffectsSection(
+                  shadow: shadow0,
+                  isMixedShadow: shadowMixed,
+                  palette: _palette,
+                  onShadowChanged: (s) {
+                    if (isTool) {
+                      _patchToolShadow(s);
+                    } else {
+                      _applyToSelection((n) => applyShadow(n, s));
+                    }
+                  },
+                ),
               ),
-              if (style != null) ...[
-                const Divider(height: 24),
-                ..._typeSpecific(context, style, isTool, primary),
-              ],
+              ?typeSection,
             ],
           ),
         );
@@ -570,229 +628,54 @@ class _PropertyInspectorState extends State<PropertyInspector> {
     return null;
   }
 
-  List<Widget> _typeSpecific(
+  Widget? _typeSpecificSection(
     BuildContext context,
-    NodeStyle style,
+    NodeStyle? style,
     bool isTool,
-    CanvasNode? primary,
   ) {
+    if (style == null) return null;
     if (style is TextNodeStyle) {
-      return _textControls(context, style, isTool, primary);
+      return InspectorTextSection(
+        style: style,
+        isTool: isTool,
+        fontFamilyController: _fontFamilyController,
+        palette: _palette,
+        onApplyToolStyle: _applyToolDefault,
+        onPatchTextNodes: (patch) {
+          _applyToSelection((n) {
+            if (n is TextNode) patch(n);
+          });
+        },
+      );
     }
     if (style is RectNodeStyle) {
-      return [];
+      return null;
     }
     if (style is PolygonNodeStyle) {
-      return _polygonControls(style, isTool);
+      return InspectorPolygonSection(
+        style: style,
+        isTool: isTool,
+        onApplyToolStyle: _applyToolDefault,
+        onPatchPolygonNodes: (patch) {
+          _applyToSelection((n) {
+            if (n is PolygonNode) patch(n);
+          });
+        },
+      );
     }
     if (style is LineNodeStyle) {
-      return _lineControls(context, style, isTool);
+      return InspectorLineSection(
+        style: style,
+        isTool: isTool,
+        onApplyToolStyle: _applyToolDefault,
+        onPatchLineNodes: (patch) {
+          _applyToSelection((n) {
+            if (n is LineNode) patch(n);
+          });
+        },
+      );
     }
-    return [];
-  }
-
-  List<Widget> _polygonControls(PolygonNodeStyle style, bool isTool) {
-    return [
-      Text('Sides: ${style.side}'),
-      Slider(
-        value: style.side.toDouble().clamp(3, 64),
-        min: 3,
-        max: 64,
-        onChanged: (v) {
-          if (isTool) {
-            _applyToolDefault(style.copyWith(side: v.toInt()));
-          } else {
-            _applyToSelection((n) {
-              if (n is PolygonNode) {
-                n.style = n.polyStyle.copyWith(side: v.toInt());
-              }
-            });
-          }
-        },
-      ),
-    ];
-  }
-
-  List<Widget> _lineControls(
-    BuildContext context,
-    LineNodeStyle style,
-    bool isTool,
-  ) {
-    return [
-      SegmentedButton<ui.StrokeCap>(
-        segments: const [
-          ButtonSegment(value: ui.StrokeCap.butt, label: Text('Butt')),
-          ButtonSegment(value: ui.StrokeCap.round, label: Text('Round')),
-          ButtonSegment(value: ui.StrokeCap.square, label: Text('Square')),
-        ],
-        selected: {style.stroke.cap},
-        onSelectionChanged: (value) {
-          if (value.isEmpty) return;
-          final cap = value.first;
-          if (isTool) {
-            _applyToolDefault(style.copyWith(stroke: style.stroke.copyWith(cap: cap)));
-          } else {
-            _applyToSelection((n) {
-              if (n is LineNode) {
-                n.style = n.lineStyle.copyWith(
-                  stroke: n.lineStyle.stroke.copyWith(cap: cap),
-                );
-              }
-            });
-          }
-        },
-        showSelectedIcon: false,
-      ),
-      SegmentedButton<ui.StrokeJoin>(
-        segments: const [
-          ButtonSegment(value: ui.StrokeJoin.round, label: Text('Round')),
-          ButtonSegment(value: ui.StrokeJoin.miter, label: Text('Miter')),
-          ButtonSegment(value: ui.StrokeJoin.bevel, label: Text('Bevel')),
-        ],
-        selected: {style.stroke.join},
-        onSelectionChanged: (value) {
-          if (value.isEmpty) return;
-          final j = value.first;
-          if (isTool) {
-            _applyToolDefault(style.copyWith(stroke: style.stroke.copyWith(join: j)));
-          } else {
-            _applyToSelection((n) {
-              if (n is LineNode) {
-                n.style = n.lineStyle.copyWith(
-                  stroke: n.lineStyle.stroke.copyWith(join: j),
-                );
-              }
-            });
-          }
-        },
-        showSelectedIcon: false,
-      ),
-    ];
-  }
-
-  List<Widget> _textControls(
-    BuildContext context,
-    TextNodeStyle style,
-    bool isTool,
-    CanvasNode? primary,
-  ) {
-    return [
-      TextField(
-        controller: _fontFamilyController,
-        decoration: const InputDecoration(
-          labelText: 'Font family',
-          border: OutlineInputBorder(),
-        ),
-        onChanged: (value) {
-          if (isTool) {
-            _applyToolDefault(
-              style.copyWith(
-                fontFamily: value.trim(),
-                clearFontFamily: value.trim().isEmpty,
-              ),
-            );
-          } else {
-            _applyToSelection((n) {
-              if (n is TextNode) {
-                n.style = n.textStyle.copyWith(
-                  fontFamily: value.trim(),
-                  clearFontFamily: value.trim().isEmpty,
-                );
-              }
-            });
-          }
-        },
-      ),
-      const SizedBox(height: 8),
-      Text('Font size: ${style.fontSize.toStringAsFixed(0)}'),
-      Slider(
-        value: style.fontSize.clamp(8, 120),
-        min: 8,
-        max: 120,
-        onChanged: (v) {
-          if (isTool) {
-            _applyToolDefault(style.copyWith(fontSize: v));
-          } else {
-            _applyToSelection((n) {
-              if (n is TextNode) n.style = n.textStyle.copyWith(fontSize: v);
-            });
-          }
-        },
-      ),
-      SegmentedButton<NodeTextLayoutMode>(
-        segments: const [
-          ButtonSegment(
-            value: NodeTextLayoutMode.autoWidthAutoHeight,
-            label: Text('Auto'),
-          ),
-          ButtonSegment(
-            value: NodeTextLayoutMode.fixedSize,
-            label: Text('Fixed'),
-          ),
-        ],
-        selected: {style.layoutMode},
-        onSelectionChanged: (value) {
-          if (value.isEmpty) return;
-          final mode = value.first;
-          if (isTool) {
-            _applyToolDefault(style.copyWith(layoutMode: mode));
-          } else {
-            _applyToSelection((n) {
-              if (n is! TextNode) return;
-              var next = n.textStyle.copyWith(layoutMode: mode);
-              if (mode == NodeTextLayoutMode.fixedSize) {
-                next = next.copyWith(
-                  fixedWidth: n.rectWidth,
-                  fixedHeight: n.rectHeight,
-                );
-              }
-              n.style = next;
-            });
-          }
-        },
-        showSelectedIcon: false,
-      ),
-      Row(
-        children: [
-          const Text('Background'),
-          const Spacer(),
-          Switch(
-            value: style.backgroundColor != null,
-            onChanged: (value) {
-              final next = style.copyWith(
-                backgroundColor: value
-                    ? (style.backgroundColor ?? const ui.Color(0x20000000))
-                    : null,
-                clearBackgroundColor: !value,
-              );
-              if (isTool) {
-                _applyToolDefault(next);
-              } else {
-                _applyToSelection((n) {
-                  if (n is TextNode) n.style = next;
-                });
-              }
-            },
-          ),
-        ],
-      ),
-      if (style.backgroundColor != null) ...[
-        InspectorColorPalette(
-          colors: _palette,
-          selected: style.backgroundColor!,
-          onChanged: (color) {
-            final next = style.copyWith(backgroundColor: color.withAlpha(72));
-            if (isTool) {
-              _applyToolDefault(next);
-            } else {
-              _applyToSelection((n) {
-                if (n is TextNode) n.style = next;
-              });
-            }
-          },
-        ),
-      ],
-    ];
+    return null;
   }
 
   static String _toolLabel(CanvasTool t) {

@@ -47,6 +47,17 @@ void applyFill(CanvasNode n, FillStyleData f) {
   if (n is ImageNode) n.style = n.imageStyle.copyWith(fill: f);
 }
 
+/// Shapes and lines that can carry an optional vector stroke in the inspector.
+bool nodeSupportsStroke(CanvasNode n) {
+  return n is RectNode ||
+      n is FrameNode ||
+      n is CircleNode ||
+      n is PolygonNode ||
+      n is StarNode ||
+      n is ImageNode ||
+      n is LineNode;
+}
+
 StrokeStyleData? readStroke(CanvasNode n) {
   if (n is RectNode) return n.rectStyle.stroke;
   if (n is FrameNode) return n.frameStyle.stroke;

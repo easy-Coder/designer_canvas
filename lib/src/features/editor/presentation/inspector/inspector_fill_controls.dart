@@ -6,9 +6,36 @@ import 'package:infinite_canvas/infinite_canvas.dart';
 import 'package:designer_canvas/src/features/editor/presentation/inspector/color_picker_popover.dart';
 import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_color_palette.dart';
 import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_color_utils.dart';
-import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_section_header.dart';
+
+/// Opens the full fill editor dialog (gradients/images); use from [InspectorSection] trailing (+).
+void showInspectorFillPicker(
+  BuildContext context, {
+  required FillStyleData fill,
+  required ValueChanged<FillStyleData> onApply,
+  required bool solidOnly,
+  required bool enabled,
+}) {
+  if (!enabled) return;
+  showDialog<void>(
+    context: context,
+    builder: (ctx) {
+      return Dialog(
+        alignment: Alignment.centerRight,
+        insetPadding: const EdgeInsets.only(right: 24, left: 200),
+        child: ColorPickerPopover(
+          initial: fill,
+          solidOnly: solidOnly,
+          onApply: onApply,
+          onClose: () => Navigator.of(ctx).pop(),
+        ),
+      );
+    },
+  );
+}
 
 /// Fill editor: quick palette, alpha slider, and full popover for gradients/images.
+///
+/// Section title and (+) trailing belong on the wrapping [InspectorSection].
 class InspectorFillControls extends StatelessWidget {
   const InspectorFillControls({
     super.key,
@@ -29,25 +56,6 @@ class InspectorFillControls extends StatelessWidget {
 
   static int _alpha(ui.Color color) => (color.a * 255.0).round().clamp(0, 255);
 
-  void _showPicker(BuildContext context) {
-    if (!enabled) return;
-    showDialog<void>(
-      context: context,
-      builder: (ctx) {
-        return Dialog(
-          alignment: Alignment.centerRight,
-          insetPadding: const EdgeInsets.only(right: 24, left: 200),
-          child: ColorPickerPopover(
-            initial: fill,
-            solidOnly: solidOnly,
-            onApply: onChanged,
-            onClose: () => Navigator.of(ctx).pop(),
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -55,14 +63,6 @@ class InspectorFillControls extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        InspectorSectionHeader(
-          'Fill',
-          trailing: IconButton(
-            icon: const Icon(Icons.add, size: 20),
-            onPressed: enabled ? () => _showPicker(context) : null,
-            tooltip: 'Edit fill',
-          ),
-        ),
         if (!enabled)
           Text(
             'Not applicable',
@@ -72,7 +72,13 @@ class InspectorFillControls extends StatelessWidget {
           Row(
             children: [
               InkWell(
-                onTap: () => _showPicker(context),
+                onTap: () => showInspectorFillPicker(
+                  context,
+                  fill: fill,
+                  onApply: onChanged,
+                  solidOnly: solidOnly,
+                  enabled: enabled,
+                ),
                 borderRadius: BorderRadius.circular(6),
                 child: Container(
                   width: 36,

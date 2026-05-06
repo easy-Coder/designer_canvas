@@ -5,9 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
 import 'package:designer_canvas/src/features/editor/domain/nodes/circle_node.dart';
-import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_section_header.dart';
+import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_section.dart';
 
-/// X/Y, size, and rotation (degrees) for [RoundedRectCanvasMixin] nodes.
+/// X/Y, rotation (degrees), then W/H for [RoundedRectCanvasMixin] nodes.
+///
+/// Renders two [InspectorSection]s: **Position** and **Layout**.
 class InspectorPositionLayoutSection extends StatelessWidget {
   const InspectorPositionLayoutSection({
     super.key,
@@ -46,74 +48,90 @@ class InspectorPositionLayoutSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        const InspectorSectionHeader('Position'),
-        _pair(
-          theme,
-          'X',
-          centerX,
-          mixedX,
-          (v) => onChanged(
-                centerX: v,
-                centerY: centerY,
-                width: width,
-                height: height,
-                rotationDegrees: rotationDegrees,
+        InspectorSection(
+          title: 'Position',
+          showDivider: true,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _pair(
+                theme,
+                'X',
+                centerX,
+                mixedX,
+                (v) => onChanged(
+                      centerX: v,
+                      centerY: centerY,
+                      width: width,
+                      height: height,
+                      rotationDegrees: rotationDegrees,
+                    ),
               ),
+              _pair(
+                theme,
+                'Y',
+                centerY,
+                mixedY,
+                (v) => onChanged(
+                      centerX: centerX,
+                      centerY: v,
+                      width: width,
+                      height: height,
+                      rotationDegrees: rotationDegrees,
+                    ),
+              ),
+              _pair(
+                theme,
+                'Rotation °',
+                rotationDegrees,
+                mixedR,
+                (v) => onChanged(
+                      centerX: centerX,
+                      centerY: centerY,
+                      width: width,
+                      height: height,
+                      rotationDegrees: v,
+                    ),
+              ),
+            ],
+          ),
         ),
-        _pair(
-          theme,
-          'Y',
-          centerY,
-          mixedY,
-          (v) => onChanged(
-                centerX: centerX,
-                centerY: v,
-                width: width,
-                height: height,
-                rotationDegrees: rotationDegrees,
+        InspectorSection(
+          title: 'Layout',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _pair(
+                theme,
+                'W',
+                width,
+                mixedW,
+                (v) => onChanged(
+                      centerX: centerX,
+                      centerY: centerY,
+                      width: v,
+                      height: height,
+                      rotationDegrees: rotationDegrees,
+                    ),
               ),
-        ),
-        _pair(
-          theme,
-          'Rotation °',
-          rotationDegrees,
-          mixedR,
-          (v) => onChanged(
-                centerX: centerX,
-                centerY: centerY,
-                width: width,
-                height: height,
-                rotationDegrees: v,
+              _pair(
+                theme,
+                'H',
+                height,
+                mixedH,
+                (v) => onChanged(
+                      centerX: centerX,
+                      centerY: centerY,
+                      width: width,
+                      height: v,
+                      rotationDegrees: rotationDegrees,
+                    ),
               ),
-        ),
-        const InspectorSectionHeader('Layout'),
-        _pair(
-          theme,
-          'W',
-          width,
-          mixedW,
-          (v) => onChanged(
-                centerX: centerX,
-                centerY: centerY,
-                width: v,
-                height: height,
-                rotationDegrees: rotationDegrees,
-              ),
-        ),
-        _pair(
-          theme,
-          'H',
-          height,
-          mixedH,
-          (v) => onChanged(
-                centerX: centerX,
-                centerY: centerY,
-                width: width,
-                height: v,
-                rotationDegrees: rotationDegrees,
-              ),
+            ],
+          ),
         ),
       ],
     );

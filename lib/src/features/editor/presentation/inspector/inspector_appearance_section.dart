@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_section_header.dart';
-
-/// Opacity and shape-specific appearance (e.g. corner radius).
+/// Opacity and shape-specific appearance (e.g. corner radius). Title lives on [InspectorSection].
 class InspectorAppearanceSection extends StatelessWidget {
   const InspectorAppearanceSection({
     super.key,
@@ -31,7 +29,6 @@ class InspectorAppearanceSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const InspectorSectionHeader('Appearance'),
         if (showOpacity && opacity01 != null && onOpacity != null) ...[
           Text('Opacity', style: theme.textTheme.labelSmall),
           Slider(

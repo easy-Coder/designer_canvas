@@ -47,7 +47,7 @@ class InspectorShadowControls extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text('Shadow', style: theme.textTheme.titleSmall),
+            Text('Shadow', style: theme.textTheme.labelSmall),
             const Spacer(),
             Switch(
               value: shadow != null,
