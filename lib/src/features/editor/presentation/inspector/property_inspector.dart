@@ -466,7 +466,6 @@ class _PropertyInspectorState extends State<PropertyInspector> {
                   stroke: stroke0,
                   isMixed: strokeMixed,
                   enabled: strokeControlsEnabled,
-                  allowDisable: allowStrokeDisable,
                   palette: _palette,
                   onChanged: (s) {
                     if (isTool) {
