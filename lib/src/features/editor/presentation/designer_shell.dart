@@ -29,7 +29,6 @@ class DesignerShell extends StatelessWidget {
     required this.tool,
     required this.toolDefaults,
     required this.frameSizePreset,
-    required this.gestureConfig,
     required this.gestureHandler,
     required this.canvasFocusNode,
     required this.documentState,
@@ -42,7 +41,6 @@ class DesignerShell extends StatelessWidget {
   final ValueNotifier<CanvasTool> tool;
   final ValueNotifier<ToolStyleDefaults> toolDefaults;
   final ValueNotifier<FrameSizePreset> frameSizePreset;
-  final InfiniteCanvasGestureConfig gestureConfig;
   final DesignerGestureHandler gestureHandler;
   final FocusNode canvasFocusNode;
   final CanvasDocumentState documentState;
@@ -70,10 +68,21 @@ class DesignerShell extends StatelessWidget {
             children: [
               Focus(
                 focusNode: canvasFocusNode,
+                autofocus: true,
+                onKeyEvent: (node, event) {
+                  if (gestureHandler.handleKeyEvent(event, controller)) {
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
                 child: InfiniteCanvasView(
                   controller: controller,
-                  gestureHandler: gestureHandler,
-                  gestureConfig: gestureConfig,
+                  onPointerEvent: (e) {
+                    if (e is PointerDownEvent && !canvasFocusNode.hasFocus) {
+                      canvasFocusNode.requestFocus();
+                    }
+                    gestureHandler.handlePointerEvent(e, controller);
+                  },
                 ),
               ),
               Align(
@@ -384,7 +393,7 @@ class _LayersPanelState extends State<_LayersPanel> {
     final next = _renameController.text.trim();
     if (node != null && commit) {
       node.label = next.isEmpty ? fallbackLabel : next;
-      _controller.requestRepaint();
+      _controller.invalidate();
     }
     _renamingQuadId = null;
     _renameSnapshot = null;

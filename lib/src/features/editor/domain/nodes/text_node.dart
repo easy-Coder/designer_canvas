@@ -9,7 +9,9 @@ import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
 
 /// Text in a heuristic [RoundedRectCanvasMixin] frame; paint uses [bounds]
 /// top-left after transforms.
-class TextNode extends CanvasNode with RoundedRectCanvasMixin {
+class TextNode extends CanvasNode
+    with RoundedRectCanvasMixin, TextOpsMixin
+    implements TextAttributeToggleable {
   TextNode({
     required ui.Offset position,
     required String text,
@@ -101,14 +103,21 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
 
   /// When true, `draw()` skips painting the text so the overlay [TextField]
   /// isn't doubled. The rounded-rect background is still painted.
+  @override
   bool isEditing = false;
+
+  bool _underline = false;
   TextEditingValue _editingValue = const TextEditingValue();
+  @override
   bool caretVisible = false;
 
+  @override
   TextEditingValue get editingValue => _editingValue;
 
+  @override
   String get text => _text;
 
+  @override
   set text(String value) {
     if (_hasGeometry) {
       _anchor = bounds.topLeft;
@@ -140,6 +149,7 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
     }
   }
 
+  @override
   void beginEditing({TextSelection? selection}) {
     final nextSelection =
         selection ?? TextSelection.collapsed(offset: _text.length);
@@ -152,6 +162,7 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
     caretVisible = true;
   }
 
+  @override
   void endEditing() {
     isEditing = false;
     caretVisible = false;
@@ -162,6 +173,7 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
     );
   }
 
+  @override
   void applyEditingValue(TextEditingValue value) {
     final textChanged = _text != value.text;
     _editingValue = value;
@@ -172,6 +184,29 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
     }
   }
 
+  @override
+  void toggleBold() {
+    final w = textStyle.fontWeight;
+    style = textStyle.copyWith(fontWeight: w >= 600 ? 400 : 700);
+    if (_hasGeometry) _syncGeometry(preserveTopLeft: true);
+  }
+
+  @override
+  void toggleItalic() {
+    style = textStyle.copyWith(
+      fontStyle: textStyle.fontStyle == FontStyle.italic
+          ? FontStyle.normal
+          : FontStyle.italic,
+    );
+    if (_hasGeometry) _syncGeometry(preserveTopLeft: true);
+  }
+
+  @override
+  void toggleUnderline() {
+    _underline = !_underline;
+  }
+
+  @override
   TextPainter createTextPainter(double zoom, {String? text}) {
     final s = textStyle;
     final layoutSize = s.fontSize.clamp(4.0, 512.0);
@@ -185,6 +220,8 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
           fontWeight:
               FontWeight.values[((s.fontWeight ~/ 100) - 1).clamp(0, 8)],
           fontSize: layoutSize * zoom,
+          decoration:
+              _underline ? TextDecoration.underline : TextDecoration.none,
           shadows: s.shadow == null
               ? null
               : [
@@ -222,6 +259,7 @@ class TextNode extends CanvasNode with RoundedRectCanvasMixin {
     return ui.Offset(localTL.dx, localTL.dy + freeHeightPx * verticalFactor);
   }
 
+  @override
   TextPosition positionForViewportOffset(
     ui.Offset viewportOffset,
     CameraView camera,

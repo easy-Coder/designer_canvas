@@ -1,6 +1,6 @@
-/// Tuning knobs for [DefaultInfiniteCanvasGestureHandler].
-class InfiniteCanvasGestureConfig {
-  const InfiniteCanvasGestureConfig({
+/// Tuning knobs for selection / camera pointer routing (see [CanvasSelectGestures]).
+class DesignerCanvasInputConfig {
+  const DesignerCanvasInputConfig({
     this.enableSelection = false,
     this.selectionSlopPixels = 4.0,
     this.doubleClickTimeout = const Duration(milliseconds: 350),

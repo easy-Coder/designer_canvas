@@ -28,16 +28,17 @@ import 'package:designer_canvas/src/features/editor/presentation/controller/pend
 import 'package:designer_canvas/src/features/editor/presentation/editor_toolbar_metadata.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
+import 'canvas_input_config.dart';
+import 'canvas_select_gestures.dart';
+
 const int _kPrimaryMouseButton = 0x01;
 const Duration _kDoubleClickTimeout = Duration(milliseconds: 350);
 const double _kDoubleClickMaxDistance = 8.0;
-const int _kDragModeChar = 0;
-const int _kDragModeWord = 1;
-const int _kDragModeLine = 2;
 
-/// Forwards to [DefaultInfiniteCanvasGestureHandler] in [CanvasTool.select];
-/// in other tools, primary pointer creates nodes (drag or tap).
-class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
+/// Routes pointer/keyboard input for the designer: select gestures from
+/// [CanvasSelectGestures], tool placement, and delegates text editing to
+/// [InfiniteCanvasController.text].
+class DesignerGestureHandler {
   DesignerGestureHandler({
     required this.tool,
     required this.toolDefaults,
@@ -45,12 +46,9 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     required this.documentState,
     required this.runtimeBridge,
     required this.documentReducer,
-    required this.delegate,
+    required this.selectGestures,
     required this.gestureConfig,
     required this.canvasFocusNode,
-    required this.startCursorBlink,
-    required this.stopCursorBlink,
-    required this.isCursorVisible,
     required this.pendingImagePlacement,
     this.onToolActivated,
   });
@@ -61,43 +59,19 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
   final CanvasDocumentState documentState;
   final RuntimeIndexBridge runtimeBridge;
   final DocumentReducer documentReducer;
-  final DefaultInfiniteCanvasGestureHandler delegate;
-  final InfiniteCanvasGestureConfig gestureConfig;
+  final CanvasSelectGestures selectGestures;
+  final DesignerCanvasInputConfig gestureConfig;
   final FocusNode canvasFocusNode;
-  final VoidCallback startCursorBlink;
-  final VoidCallback stopCursorBlink;
-  final bool Function() isCursorVisible;
   final ValueNotifier<PendingImagePlacement?> pendingImagePlacement;
   final void Function(CanvasTool tool)? onToolActivated;
 
-  /// Currently edited text node, or null.
-  final ValueNotifier<({int quadId, TextNode node})?> _editingText =
-      ValueNotifier(null);
-  CanvasTextImeClient? _imeClient;
-  String? _editSnapshot;
   int? _textDragPointer;
-  int? _textDragAnchorOffset;
-  int _textDragMode = _kDragModeChar;
-  int _selectionAnchorOffset = 0;
   Duration? _lastTextPointerDownAt;
   ui.Offset? _lastTextPointerDownLocal;
-  int _textClickCount = 0;
 
-  @override
-  int? get activeEditingQuadId => _editingText.value?.quadId;
-
-  void _applyEditingValue(
-    InfiniteCanvasController controller,
-    TextEditingValue next,
-  ) {
-    final editing = _editingText.value;
-    if (editing == null) return;
-    editing.node.applyEditingValue(next);
-    editing.node.caretVisible = true;
-    _imeClient?.updateLocalValue(next);
-    controller.updateNode(editing.quadId);
-    controller.requestRepaint();
-  }
+  /// Quad id of the node currently in inline text edit (if any).
+  int? activeEditingQuadId(InfiniteCanvasController controller) =>
+      controller.text.editingQuadId;
 
   /// Start inline editing for [node] at [quadId].
   void startEditing(
@@ -105,88 +79,28 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     TextNode node,
     InfiniteCanvasController controller,
   ) {
-    stopEditing(controller, commit: true);
-    _editSnapshot = node.text;
-    node.beginEditing(
-      selection: TextSelection.collapsed(offset: node.text.length),
-    );
-    node.caretVisible = isCursorVisible();
-    _editingText.value = (quadId: quadId, node: node);
-    _imeClient ??= CanvasTextImeClient(
-      onValueChanged: (value) {
-        final editing = _editingText.value;
-        if (editing == null) return;
-        editing.node.applyEditingValue(value);
-        editing.node.caretVisible = isCursorVisible();
-        controller.updateNode(editing.quadId);
-        controller.requestRepaint();
-      },
-      onDone: () => stopEditing(controller, commit: true),
-      onConnectionClosed: () => stopEditing(controller, commit: true),
-    );
-    _imeClient!.attach(
-      configuration: TextInputConfiguration(
-        inputType: TextInputType.multiline,
-        inputAction: TextInputAction.newline,
-        enableDeltaModel: true,
-        autocorrect: true,
-        enableSuggestions: true,
-        keyboardAppearance: Brightness.dark,
-      ),
-      value: node.editingValue,
-    );
+    controller.text.beginEditing(quadId);
     canvasFocusNode.requestFocus();
-    _imeClient!.show();
-    startCursorBlink();
-    controller.requestRepaint();
-  }
-
-  void updateEditingCaretVisibility(InfiniteCanvasController controller) {
-    final editing = _editingText.value;
-    if (editing == null) return;
-    editing.node.caretVisible = isCursorVisible();
-    controller.requestRepaint();
   }
 
   void handleCanvasFocusChanged(
     bool hasFocus,
     InfiniteCanvasController controller,
   ) {
-    // Keep editing alive even if sidebars temporarily take focus.
-    // Explicit exit paths (outside tap, Escape, IME done/close) still apply.
-    if (!hasFocus && _editingText.value == null) return;
+    if (!hasFocus && controller.text.editingQuadId == null) return;
   }
 
-  void dispose() {
-    _imeClient?.close();
-  }
+  void dispose() {}
 
   /// Commit current text and close the editor.
   void stopEditing(
     InfiniteCanvasController? controller, {
     required bool commit,
   }) {
-    final editing = _editingText.value;
-    if (editing == null) return;
-    if (!commit && _editSnapshot != null) {
-      editing.node.updateText(_editSnapshot!);
-    } else {
-      editing.node.updateText(editing.node.editingValue.text);
-    }
-    editing.node.endEditing();
-    stopCursorBlink();
-    _imeClient?.close();
-    _editSnapshot = null;
-    _editingText.value = null;
+    controller?.text.stopEditing(commit: commit);
     _textDragPointer = null;
-    _textDragAnchorOffset = null;
-    _textDragMode = _kDragModeChar;
-    _selectionAnchorOffset = 0;
-    _textClickCount = 0;
-    if (controller != null) {
-      controller.updateNode(editing.quadId);
-      controller.requestRepaint();
-    }
+    _lastTextPointerDownAt = null;
+    _lastTextPointerDownLocal = null;
   }
 
   // ─── Placement state ─────────────────────────────────────────────────
@@ -303,8 +217,8 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     int childId,
     int frameId,
   ) {
-    final childNode = controller.lookupNode(childId);
-    final frameNode = controller.lookupNode(frameId);
+    final childNode = controller.node.lookup(childId);
+    final frameNode = controller.node.lookup(frameId);
     if (childNode == null || frameNode is! FrameNode) return;
     final childNodeId = _nodeIdForQuadId(childId);
     final frameNodeId = _nodeIdForQuadId(frameId);
@@ -327,7 +241,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     InfiniteCanvasController controller,
     int nodeId,
   ) {
-    final node = controller.lookupNode(nodeId);
+    final node = controller.node.lookup(nodeId);
     if (node == null) {
       _detachChild(nodeId);
       return;
@@ -341,7 +255,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     final frameNodeId = _nodeIdForQuadId(frameId);
     if (childNodeId == null || frameNodeId == null) return;
     if (documentState.parentOf(childNodeId) == frameNodeId) {
-      final frameNode = controller.lookupNode(frameId);
+      final frameNode = controller.node.lookup(frameId);
       if (frameNode != null) {
         documentReducer.dispatch(
           NodeReparented(
@@ -421,7 +335,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     for (final entry in mapped) {
       final quadId = entry.key;
       final nodeId = entry.value;
-      final node = controller.lookupNode(quadId);
+      final node = controller.node.lookup(quadId);
       if (node == null) continue;
       final current = documentState.nodeById(nodeId);
       final entity = runtimeBridge.nodeCodec.entityFromNode(
@@ -442,7 +356,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     InfiniteCanvasController controller,
     int quadId,
   ) {
-    if (controller.lookupNode(quadId) == null) return quadId;
+    if (controller.node.lookup(quadId) == null) return quadId;
     final nodeId = runtimeBridge.nodeCodec.newNodeId();
     runtimeBridge.promoteRuntimeNodeAsEntity(quadId, nodeId: nodeId);
     return runtimeBridge.quadIdForNodeId(nodeId) ?? quadId;
@@ -466,7 +380,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           width: spec.size.width,
           height: spec.size.height,
         );
-        _placeQuadId = controller.addNode(
+        _placeQuadId = controller.node.add(
           FrameNode.fromAxisAlignedRect(
             r,
             style: toolDefaults.value.frame,
@@ -475,7 +389,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
         );
       case CanvasTool.rect:
         final r = ui.Rect.fromCenter(center: start, width: eps, height: eps);
-        _placeQuadId = controller.addNode(
+        _placeQuadId = controller.node.add(
           RectNode.fromAxisAlignedRect(
             r,
             style: toolDefaults.value.rect,
@@ -483,7 +397,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           ),
         );
       case CanvasTool.circle:
-        _placeQuadId = controller.addNode(
+        _placeQuadId = controller.node.add(
           CircleNode(
             center: start,
             radius: eps / 2,
@@ -493,7 +407,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
         );
       case CanvasTool.line:
       case CanvasTool.pen:
-        _placeQuadId = controller.addNode(
+        _placeQuadId = controller.node.add(
           LineNode(
             start: start,
             end: ui.Offset(start.dx + eps, start.dy),
@@ -502,7 +416,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           ),
         );
       case CanvasTool.arrow:
-        _placeQuadId = controller.addNode(
+        _placeQuadId = controller.node.add(
           ArrowNode(
             start: start,
             end: ui.Offset(start.dx + eps, start.dy),
@@ -511,7 +425,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           ),
         );
       case CanvasTool.polygon:
-        _placeQuadId = controller.addNode(
+        _placeQuadId = controller.node.add(
           PolygonNode(
             center: start,
             width: eps,
@@ -521,7 +435,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           ),
         );
       case CanvasTool.star:
-        _placeQuadId = controller.addNode(
+        _placeQuadId = controller.node.add(
           StarNode(
             center: start,
             width: eps,
@@ -532,7 +446,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
         );
       case CanvasTool.image:
         final selectedImage = pendingImagePlacement.value;
-        _placeQuadId = controller.addNode(
+        _placeQuadId = controller.node.add(
           ImageNode(
             center: start,
             width: eps,
@@ -559,7 +473,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     if (id == null || t == null) return;
 
     final minW = _minWorldSize(controller);
-    final node = controller.lookupNode(id);
+    final node = controller.node.lookup(id);
     if (node == null) return;
 
     switch (t) {
@@ -570,17 +484,17 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
         (node as FrameNode).setAxisAlignedWorldRect(
           _normalizeWorldRect(start, end),
         );
-        controller.updateNode(id);
+        controller.node.reindex(id);
       case CanvasTool.rect:
         (node as RectNode).setAxisAlignedWorldRect(
           _normalizeWorldRect(start, end),
         );
-        controller.updateNode(id);
+        controller.node.reindex(id);
       case CanvasTool.circle:
         final r = _normalizeWorldRect(start, end);
         final radius = math.min(r.width, r.height) / 2;
         (node as CircleNode).setCenterAndRadius(r.center, radius);
-        controller.updateNode(id);
+        controller.node.reindex(id);
       case CanvasTool.line:
       case CanvasTool.pen:
       case CanvasTool.arrow:
@@ -590,22 +504,22 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           b = ui.Offset(a.dx + minW, a.dy);
         }
         (node as LineNode).setWorldEndpoints(a, b);
-        controller.updateNode(id);
+        controller.node.reindex(id);
       case CanvasTool.polygon:
         (node as PolygonNode).setAxisAlignedWorldRect(
           _normalizeWorldRect(start, end),
         );
-        controller.updateNode(id);
+        controller.node.reindex(id);
       case CanvasTool.star:
         (node as StarNode).setAxisAlignedWorldRect(
           _normalizeWorldRect(start, end),
         );
-        controller.updateNode(id);
+        controller.node.reindex(id);
       case CanvasTool.image:
         (node as ImageNode).setAxisAlignedWorldRect(
           _normalizeWorldRect(start, end),
         );
-        controller.updateNode(id);
+        controller.node.reindex(id);
     }
   }
 
@@ -646,7 +560,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
 
     if (t == CanvasTool.text) {
       if ((end - start).distance <= slop) {
-        final newId = controller.addNode(
+        final newId = controller.node.add(
           TextNode(
             position: start,
             text: 'Text',
@@ -655,44 +569,44 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           ),
         );
         final runtimeQuadId = _commitRuntimeNodeCreation(controller, newId);
-        controller.selectSingle(runtimeQuadId);
-        final node = controller.lookupNode(runtimeQuadId);
+        controller.selection.selectSingle(runtimeQuadId);
+        final node = controller.node.lookup(runtimeQuadId);
         if (node is TextNode) {
           startEditing(runtimeQuadId, node, controller);
         }
         _switchToSelectTool();
       }
-      controller.requestRepaint();
+      controller.invalidate();
       return;
     }
 
     if (id == null || t == null || t == CanvasTool.select) {
-      controller.requestRepaint();
+      controller.invalidate();
       return;
     }
 
     if (t == CanvasTool.line || t == CanvasTool.pen || t == CanvasTool.arrow) {
       _applyPreviewGeometry(controller, start, end, lineFinalize: true);
       final runtimeQuadId = _commitRuntimeNodeCreation(controller, id);
-      controller.selectSingle(runtimeQuadId);
+      controller.selection.selectSingle(runtimeQuadId);
       _switchToSelectTool();
-      controller.requestRepaint();
+      controller.invalidate();
       return;
     }
 
     if (t == CanvasTool.frame && (end - start).distance <= slop) {
       final runtimeQuadId = _commitRuntimeNodeCreation(controller, id);
-      controller.selectSingle(runtimeQuadId);
+      controller.selection.selectSingle(runtimeQuadId);
       _switchToSelectTool();
-      controller.requestRepaint();
+      controller.invalidate();
       return;
     }
 
     if (t == CanvasTool.image && (end - start).distance <= slop) {
       final selectedImage = pendingImagePlacement.value;
       if (selectedImage == null) {
-        controller.removeNode(id);
-        controller.requestRepaint();
+        controller.node.remove(id);
+        controller.invalidate();
         return;
       }
       final clickRect = ui.Rect.fromCenter(
@@ -700,7 +614,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
         width: selectedImage.intrinsicWidth,
         height: selectedImage.intrinsicHeight,
       );
-      final node = controller.lookupNode(id);
+      final node = controller.node.lookup(id);
       if (node is ImageNode) {
         node.setAxisAlignedWorldRect(clickRect);
         node.setSource(
@@ -709,33 +623,32 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
           intrinsicWidth: selectedImage.intrinsicWidth,
           intrinsicHeight: selectedImage.intrinsicHeight,
         );
-        controller.updateNode(id);
+        controller.node.reindex(id);
       }
       final runtimeQuadId = _commitRuntimeNodeCreation(controller, id);
-      controller.selectSingle(runtimeQuadId);
+      controller.selection.selectSingle(runtimeQuadId);
       _switchToSelectTool();
-      controller.requestRepaint();
+      controller.invalidate();
       return;
     }
 
     if (_previewBelowMinSize(controller, start, end)) {
-      controller.removeNode(id);
+      controller.node.remove(id);
     } else {
       _applyPreviewGeometry(controller, start, end, lineFinalize: false);
       final runtimeQuadId = _commitRuntimeNodeCreation(controller, id);
-      controller.selectSingle(runtimeQuadId);
+      controller.selection.selectSingle(runtimeQuadId);
       _switchToSelectTool();
     }
-    controller.requestRepaint();
+    controller.invalidate();
   }
 
-  @override
   void handlePointerEvent(
     PointerEvent event,
     InfiniteCanvasController controller,
   ) {
     if (event is PointerScrollEvent || event is PointerPanZoomUpdateEvent) {
-      delegate.handlePointerEvent(event, controller);
+      selectGestures.handlePointerEvent(event, controller);
       return;
     }
 
@@ -743,163 +656,59 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
       controller.clearHover();
     }
 
-    if (_editingText.value != null && _textDragPointer != null) {
-      final editing = _editingText.value!;
+    if (controller.text.editingQuadId != null && _textDragPointer != null) {
       if (event.pointer == _textDragPointer && event is PointerMoveEvent) {
-        final anchor =
-            _textDragAnchorOffset ??
-            editing.node.editingValue.selection.baseOffset;
-        final position = editing.node.positionForViewportOffset(
+        controller.text.dragSelectTo(
           event.localPosition,
-          controller.camera,
+          camera: controller.camera,
         );
-        final extentOffset = position.offset;
-        final nextSelection = switch (_textDragMode) {
-          _kDragModeWord =>
-            extentOffset >= anchor
-                ? TextSelection(
-                    baseOffset: wordStart(
-                      editing.node.editingValue.text,
-                      anchor,
-                    ),
-                    extentOffset: wordEnd(
-                      editing.node.editingValue.text,
-                      extentOffset,
-                    ),
-                  )
-                : TextSelection(
-                    baseOffset: wordEnd(editing.node.editingValue.text, anchor),
-                    extentOffset: wordStart(
-                      editing.node.editingValue.text,
-                      extentOffset,
-                    ),
-                  ),
-          _kDragModeLine => () {
-            final paintText = editing.node.editingValue.text;
-            final painter = editing.node.createTextPainter(
-              controller.camera.zoomDouble,
-              text: paintText,
-            );
-            final atAnchor = lineSelectionAtOffsetWithPainter(
-              painter,
-              paintText,
-              anchor,
-            );
-            final atExtent = lineSelectionAtOffsetWithPainter(
-              painter,
-              paintText,
-              extentOffset,
-            );
-            return TextSelection(
-              baseOffset: atAnchor.baseOffset,
-              extentOffset: atExtent.extentOffset,
-            );
-          }(),
-          _ => TextSelection(baseOffset: anchor, extentOffset: extentOffset),
-        };
-        final nextValue = editing.node.editingValue.copyWith(
-          selection: nextSelection,
-        );
-        _applyEditingValue(controller, nextValue);
         return;
       }
-
       if (event.pointer == _textDragPointer &&
           (event is PointerUpEvent || event is PointerCancelEvent)) {
+        controller.text.endTextDrag();
         _textDragPointer = null;
-        _textDragAnchorOffset = null;
-        _textDragMode = _kDragModeChar;
         return;
       }
     }
 
-    if (event is PointerDownEvent && _editingText.value != null) {
-      final editing = _editingText.value!;
-      final world = controller.camera.localToGlobal(
-        event.localPosition.dx,
-        event.localPosition.dy,
-      );
-      final toleranceWorld = 8.0 / controller.camera.zoomDouble;
-      final hitBounds = editing.node.bounds.inflate(toleranceWorld);
-      if (hitBounds.contains(world)) {
-        canvasFocusNode.requestFocus();
-        final position = editing.node.positionForViewportOffset(
-          event.localPosition,
-          controller.camera,
+    if (event is PointerDownEvent && controller.text.editingQuadId != null) {
+      final node = controller.text.editingNode;
+      if (node is TextNode) {
+        final world = controller.camera.localToGlobal(
+          event.localPosition.dx,
+          event.localPosition.dy,
         );
-        final now = event.timeStamp;
-        final isRepeatedClick =
-            _lastTextPointerDownAt != null &&
-            (now - _lastTextPointerDownAt!) <= _kDoubleClickTimeout &&
-            _lastTextPointerDownLocal != null &&
-            (event.localPosition - _lastTextPointerDownLocal!).distance <=
-                _kDoubleClickMaxDistance;
-        _textClickCount = isRepeatedClick
-            ? (_textClickCount + 1).clamp(1, 4)
-            : 1;
-        final isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
-        final offset = position.offset;
-        final current = editing.node.editingValue.selection;
-        late final TextSelection selection;
-        late final int dragMode;
-        late final int anchor;
-        if (isShiftPressed && _textClickCount == 1) {
-          anchor = current.isValid
-              ? current.baseOffset
-              : _selectionAnchorOffset;
-          selection = TextSelection(baseOffset: anchor, extentOffset: offset);
-          dragMode = _kDragModeChar;
-        } else if (_textClickCount == 2) {
-          final start = wordStart(editing.node.editingValue.text, offset);
-          final end = wordEnd(editing.node.editingValue.text, offset);
-          selection = TextSelection(baseOffset: start, extentOffset: end);
-          anchor = start;
-          dragMode = _kDragModeWord;
-        } else if (_textClickCount == 3) {
-          final paintText = editing.node.editingValue.text;
-          final painter = editing.node.createTextPainter(
-            controller.camera.zoomDouble,
-            text: paintText,
+        final toleranceWorld = 8.0 / controller.camera.zoomDouble;
+        final hitBounds = node.bounds.inflate(toleranceWorld);
+        if (hitBounds.contains(world)) {
+          canvasFocusNode.requestFocus();
+          final now = event.timeStamp;
+          final isRepeatedClick =
+              _lastTextPointerDownAt != null &&
+              (now - _lastTextPointerDownAt!) <= _kDoubleClickTimeout &&
+              _lastTextPointerDownLocal != null &&
+              (event.localPosition - _lastTextPointerDownLocal!).distance <=
+                  _kDoubleClickMaxDistance;
+          controller.text.selectAtViewportOffset(
+            event.localPosition,
+            shiftExtend: HardwareKeyboard.instance.isShiftPressed,
+            isRepeatedClick: isRepeatedClick,
+            camera: controller.camera,
+            pointer: event.pointer,
           );
-          selection = lineSelectionAtOffsetWithPainter(
-            painter,
-            paintText,
-            offset,
-          );
-          anchor = selection.baseOffset;
-          dragMode = _kDragModeLine;
-        } else if (_textClickCount >= 4) {
-          selection = TextSelection(
-            baseOffset: 0,
-            extentOffset: editing.node.editingValue.text.length,
-          );
-          anchor = 0;
-          dragMode = _kDragModeChar;
-        } else {
-          selection = TextSelection.collapsed(offset: offset);
-          anchor = offset;
-          dragMode = _kDragModeChar;
+          _textDragPointer = event.pointer;
+          _lastTextPointerDownAt = now;
+          _lastTextPointerDownLocal = event.localPosition;
+          return;
         }
-        final nextValue = editing.node.editingValue.copyWith(
-          selection: selection,
-        );
-        _textDragPointer = event.pointer;
-        _textDragAnchorOffset = anchor;
-        _selectionAnchorOffset = anchor;
-        _textDragMode = dragMode;
-        _lastTextPointerDownAt = now;
-        _lastTextPointerDownLocal = event.localPosition;
-        _applyEditingValue(controller, nextValue);
-        return;
       }
       _textDragPointer = null;
-      _textDragAnchorOffset = null;
-      _textDragMode = _kDragModeChar;
       stopEditing(controller, commit: true);
     }
 
     if (tool.value == CanvasTool.select) {
-      delegate.handlePointerEvent(event, controller);
+      selectGestures.handlePointerEvent(event, controller);
       final shouldRecomputeMembership =
           event is PointerUpEvent || event is PointerCancelEvent;
       _syncFrameGroupingAfterInteraction(
@@ -913,7 +722,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     if (event is PointerDownEvent) {
       if ((event.buttons & _kPrimaryMouseButton) == 0 ||
           (event.buttons & kMiddleMouseButton) != 0) {
-        delegate.handlePointerEvent(event, controller);
+        selectGestures.handlePointerEvent(event, controller);
         return;
       }
       _placePointer = event.pointer;
@@ -929,12 +738,12 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     }
 
     if (_placePointer == null) {
-      delegate.handlePointerEvent(event, controller);
+      selectGestures.handlePointerEvent(event, controller);
       return;
     }
 
     if (event.pointer != _placePointer) {
-      delegate.handlePointerEvent(event, controller);
+      selectGestures.handlePointerEvent(event, controller);
       return;
     }
 
@@ -947,7 +756,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
         );
         _applyPreviewGeometry(controller, start, cur, lineFinalize: false);
       } else if (start != null && _placeTool == CanvasTool.text) {
-        controller.requestRepaint();
+        controller.invalidate();
       }
       return;
     }
@@ -972,7 +781,7 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     if (event is PointerCancelEvent) {
       final id = _placeQuadId;
       if (id != null) {
-        controller.removeNode(id);
+        controller.node.remove(id);
       }
       _syncFrameGroupingAfterInteraction(controller, recomputeMembership: true);
       _clearPlacement();
@@ -980,62 +789,18 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
     }
   }
 
-  @override
   bool handleKeyEvent(KeyEvent event, InfiniteCanvasController controller) {
-    if (_editingText.value != null) {
-      if (event is KeyDownEvent &&
-          event.logicalKey == LogicalKeyboardKey.escape) {
-        stopEditing(controller, commit: false);
-        return true;
-      }
-      if (event is! KeyDownEvent) return false;
+    if (controller.text.editingQuadId != null) {
       if (!canvasFocusNode.hasFocus) {
         canvasFocusNode.requestFocus();
       }
-      final editing = _editingText.value!;
-      final value = editing.node.editingValue;
-      final key = event.logicalKey;
-      final expandSelection = HardwareKeyboard.instance.isShiftPressed;
-      TextEditingValue? next;
-      if (key == LogicalKeyboardKey.arrowLeft) {
-        next = moveHorizontal(value, true, expandSelection: expandSelection);
-      } else if (key == LogicalKeyboardKey.arrowRight) {
-        next = moveHorizontal(value, false, expandSelection: expandSelection);
-      } else if (key == LogicalKeyboardKey.arrowUp) {
-        final painter = editing.node.createTextPainter(
-          controller.camera.zoomDouble,
-          text: value.text,
-        );
-        next = moveVerticalWithPainter(
-          value,
-          painter,
-          true,
-          expandSelection: expandSelection,
-        );
-      } else if (key == LogicalKeyboardKey.arrowDown) {
-        final painter = editing.node.createTextPainter(
-          controller.camera.zoomDouble,
-          text: value.text,
-        );
-        next = moveVerticalWithPainter(
-          value,
-          painter,
-          false,
-          expandSelection: expandSelection,
-        );
-      } else if (key == LogicalKeyboardKey.backspace) {
-        next = deleteBackward(value);
-      } else if (key == LogicalKeyboardKey.delete) {
-        next = deleteForward(value);
-      }
-      if (next != null) {
-        _applyEditingValue(controller, next);
+      if (controller.text.handleKeyEvent(event, HardwareKeyboard.instance)) {
         return true;
       }
-      // Let non-navigation/non-delete keys flow to IME so typed characters
-      // are delivered via delta updates.
+      // Editing text: never fall through to tool / camera shortcuts.
       return false;
     }
+
     if (event is KeyDownEvent) {
       final nextTool = toolForKeyEvent(event);
       if (nextTool != null) {
@@ -1049,18 +814,10 @@ class DesignerGestureHandler extends InfiniteCanvasGestureHandler {
         return true;
       }
     }
+
     if (tool.value == CanvasTool.select) {
-      return delegate.handleKeyEvent(event, controller);
+      return selectGestures.handleKeyEvent(event, controller);
     }
     return false;
-  }
-
-  @override
-  Widget wrap(
-    BuildContext context,
-    InfiniteCanvasController controller,
-    Widget child,
-  ) {
-    return child;
   }
 }

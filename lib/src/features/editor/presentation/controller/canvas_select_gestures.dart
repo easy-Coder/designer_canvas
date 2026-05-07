@@ -5,12 +5,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:infinite_canvas/infinite_canvas.dart';
 
-import '../controller/infinite_canvas_controller.dart';
-import '../selection/selection_handles.dart';
-import '../util/transform_union_geometry.dart';
-import 'infinite_canvas_gesture_config.dart';
-import 'infinite_canvas_gesture_handler.dart';
+import 'canvas_input_config.dart';
 
 /// Same value as Flutter's `kPrimaryMouseButton` (not exported on all channels).
 const int _kPrimaryMouseButton = 0x01;
@@ -35,12 +32,12 @@ enum _PrimarySession {
 /// unselected node is on top, it wins over handles. Primary down on an
 /// unselected top node (without Shift) replaces the selection via
 /// [InfiniteCanvasController.selectSingle].
-class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
-  DefaultInfiniteCanvasGestureHandler({
-    this.config = const InfiniteCanvasGestureConfig(),
+class CanvasSelectGestures {
+  CanvasSelectGestures({
+    this.config = const DesignerCanvasInputConfig(),
   });
 
-  final InfiniteCanvasGestureConfig config;
+  final DesignerCanvasInputConfig config;
 
   final Map<int, Offset> _pointers = HashMap();
   final Set<int> _middlePanPointers = {};
@@ -50,7 +47,6 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
   int? _primaryPointer;
   _PrimarySession _primarySession = _PrimarySession.idle;
   Offset? _primaryDownLocal;
-  ui.Offset? _marqueeAnchorWorld;
   int? _downQuadId;
 
   int? _lastTapQuadId;
@@ -63,7 +59,6 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
   Map<int, ui.Rect>? _boundsSnapshot;
   ui.Offset? _rotatePointerWorldLast;
 
-  @override
   void handlePointerEvent(
     PointerEvent event,
     InfiniteCanvasController controller,
@@ -149,7 +144,7 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
       final cam = controller.camera;
       final world = cam.localToGlobal(e.localPosition.dx, e.localPosition.dy);
 
-      final hitId = controller.pickTopNodeAtWorld(world);
+      final hitId = controller.node.hitTest(world);
 
       if (hitId != null &&
           !controller.selectedQuadIds.contains(hitId) &&
@@ -186,7 +181,7 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
       _downQuadId = hitId;
       if (hitId == null) {
         _primarySession = _PrimarySession.downEmpty;
-        _marqueeAnchorWorld = world;
+        controller.selection.beginMarquee(world);
       } else {
         _primarySession = _PrimarySession.downNode;
       }
@@ -194,7 +189,7 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
   }
 
   void _cancelPrimarySession(InfiniteCanvasController controller) {
-    _endTransformSessions(controller);
+    controller.transform.end();
     _activeHandle = null;
     _transformBaselinePrepared = false;
     _transformStartUnion = null;
@@ -203,15 +198,8 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
     _primaryPointer = null;
     _primarySession = _PrimarySession.idle;
     _primaryDownLocal = null;
-    _marqueeAnchorWorld = null;
     _downQuadId = null;
     controller.marqueeWorldRect = null;
-  }
-
-  void _endTransformSessions(InfiniteCanvasController controller) {
-    for (final id in controller.selectedQuadIds) {
-      controller.lookupNode(id)?.endTransformSession();
-    }
   }
 
   void _prepareTransformBaseline(InfiniteCanvasController controller) {
@@ -280,7 +268,7 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
       switch (_primarySession) {
         case _PrimarySession.handleTransform:
           if (!config.enableNodeTransform) {
-            controller.requestRepaint();
+            controller.invalidate();
             return;
           }
           if (moved >= slop) {
@@ -290,7 +278,7 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
               _transformStartUnion == null ||
               _boundsSnapshot == null ||
               _activeHandle == null) {
-            controller.requestRepaint();
+            controller.invalidate();
             return;
           }
           final pointerWorld = cam.localToGlobal(
@@ -334,7 +322,7 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
           return;
         case _PrimarySession.nodeDrag:
           if (!config.enableNodeTransform) {
-            controller.requestRepaint();
+            controller.invalidate();
             return;
           }
           final z = cam.zoomDouble;
@@ -345,17 +333,13 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
           final targets = controller.selectedQuadIds.contains(hit)
               ? controller.selectedQuadIds
               : <int>{hit};
-          for (final id in targets) {
-            controller.lookupNode(id)?.translateWorld(worldDelta);
-          }
-          controller.relayoutNodes(targets);
+          controller.node.translate(targets, worldDelta);
           return;
         case _PrimarySession.downEmpty:
           if (moved >= slop) {
             _primarySession = _PrimarySession.marquee;
-            final a = _marqueeAnchorWorld!;
             final b = cam.localToGlobal(e.localPosition.dx, e.localPosition.dy);
-            controller.marqueeWorldRect = _normalizeWorldRect(a, b);
+            controller.selection.updateMarquee(b);
           }
           return;
         case _PrimarySession.downNode:
@@ -364,9 +348,8 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
           }
           return;
         case _PrimarySession.marquee:
-          final a = _marqueeAnchorWorld!;
           final b = cam.localToGlobal(e.localPosition.dx, e.localPosition.dy);
-          controller.marqueeWorldRect = _normalizeWorldRect(a, b);
+          controller.selection.updateMarquee(b);
           return;
         case _PrimarySession.idle:
           break;
@@ -400,16 +383,11 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
 
       switch (_primarySession) {
         case _PrimarySession.handleTransform:
-          controller.requestRepaint();
+          controller.invalidate();
           break;
         case _PrimarySession.marquee:
-          final rect = controller.marqueeWorldRect;
-          if (rect != null && rect.width > 1e-6 && rect.height > 1e-6) {
-            final additive = HardwareKeyboard.instance.isShiftPressed;
-            controller.applyMarquee(rect, additive: additive);
-          } else {
-            controller.marqueeWorldRect = null;
-          }
+          final additive = HardwareKeyboard.instance.isShiftPressed;
+          controller.selection.endMarquee(additive: additive);
           break;
         case _PrimarySession.downEmpty:
           if (moved < slop) {
@@ -450,7 +428,7 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
           }
           break;
         case _PrimarySession.nodeDrag:
-          controller.requestRepaint();
+          controller.invalidate();
           break;
         case _PrimarySession.idle:
           break;
@@ -489,7 +467,7 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
       event.localPosition.dx,
       event.localPosition.dy,
     );
-    final hitId = controller.pickTopNodeAtWorld(world);
+    final hitId = controller.node.hitTest(world);
 
     final union = controller.selectedUnionBounds;
     if (controller.selectedQuadIds.isNotEmpty && union != null) {
@@ -561,7 +539,6 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
     cam.moveTo(cam.position + (worldBefore - worldAfter));
   }
 
-  @override
   bool handleKeyEvent(
     KeyEvent event,
     InfiniteCanvasController controller,
@@ -614,15 +591,6 @@ class DefaultInfiniteCanvasGestureHandler extends InfiniteCanvasGestureHandler {
       return cam.setZoomDouble(z);
     }
     return false;
-  }
-
-  static ui.Rect _normalizeWorldRect(ui.Offset a, ui.Offset b) {
-    return ui.Rect.fromLTRB(
-      math.min(a.dx, b.dx),
-      math.min(a.dy, b.dy),
-      math.max(a.dx, b.dx),
-      math.max(a.dy, b.dy),
-    );
   }
 
   static double _span(List<Offset> pts) {

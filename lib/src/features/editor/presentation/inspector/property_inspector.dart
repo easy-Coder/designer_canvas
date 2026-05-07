@@ -77,9 +77,8 @@ class _PropertyInspectorState extends State<PropertyInspector> {
     if (_scope != InspectorScope.selectedNode) return;
     for (final (id, n) in _orderedSelection()) {
       patch(n);
-      _c.updateNode(id);
+      _c.node.reindex(id);
     }
-    _c.requestRepaint();
   }
 
   void _applyToolDefault(NodeStyle style) {

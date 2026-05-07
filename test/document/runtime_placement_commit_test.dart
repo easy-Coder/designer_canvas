@@ -19,9 +19,8 @@ void main() {
     late NodeCodec codec;
 
     setUp(() {
-      controller = InfiniteCanvasController(
-        worldBounds: const ui.Rect.fromLTWH(-2000, -2000, 4000, 4000),
-      );
+      controller = InfiniteCanvasController()
+        ..setWorldBounds(const ui.Rect.fromLTWH(-2000, -2000, 4000, 4000));
       documentState = CanvasDocumentState(docId: 'doc');
       codec = NodeCodec();
       bridge = RuntimeIndexBridge(

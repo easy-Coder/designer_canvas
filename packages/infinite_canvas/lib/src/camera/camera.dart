@@ -17,15 +17,15 @@ class Camera with ChangeNotifier implements CameraView {
     ui.Rect? boundary,
     double minZoom = 0.05,
     double maxZoom = 1.0,
-  })  : _position = position,
-        _viewportSize = viewportSize,
-        _halfViewportSize = viewportSize / 2,
-        _bound = ui.Rect.zero,
-        _minZoom = minZoom,
-        _maxZoom = maxZoom,
-        _zoom = zoomDouble.clamp(minZoom, maxZoom),
-        _boundary = boundary {
-    assert(minZoom > 0 && minZoom <= maxZoom && maxZoom <= 1);
+  }) : _position = position,
+       _viewportSize = viewportSize,
+       _halfViewportSize = viewportSize / 2,
+       _bound = ui.Rect.zero,
+       _minZoom = minZoom,
+       _maxZoom = maxZoom,
+       _zoom = zoomDouble.clamp(minZoom, maxZoom),
+       _boundary = boundary {
+    assert(minZoom > 0 && minZoom <= maxZoom && maxZoom <= 100);
     _calculateBound();
   }
 
@@ -75,34 +75,41 @@ class Camera with ChangeNotifier implements CameraView {
   @override
   @pragma('vm:prefer-inline')
   ui.Offset globalToLocalOffset(ui.Offset offset) => ui.Offset(
-        (offset.dx - _bound.left) * _zoom,
-        (offset.dy - _bound.top) * _zoom,
-      );
+    (offset.dx - _bound.left) * _zoom,
+    (offset.dy - _bound.top) * _zoom,
+  );
 
   @override
   @pragma('vm:prefer-inline')
   ui.Offset localToGlobalOffset(ui.Offset offset) => ui.Offset(
-        offset.dx / _zoom + _bound.left,
-        offset.dy / _zoom + _bound.top,
-      );
+    offset.dx / _zoom + _bound.left,
+    offset.dy / _zoom + _bound.top,
+  );
 
   @override
   @pragma('vm:prefer-inline')
   ui.Rect globalToLocalRect(ui.Rect rect) => ui.Rect.fromLTRB(
-        (rect.left - _bound.left) * _zoom,
-        (rect.top - _bound.top) * _zoom,
-        (rect.right - _bound.left) * _zoom,
-        (rect.bottom - _bound.top) * _zoom,
-      );
+    (rect.left - _bound.left) * _zoom,
+    (rect.top - _bound.top) * _zoom,
+    (rect.right - _bound.left) * _zoom,
+    (rect.bottom - _bound.top) * _zoom,
+  );
 
   @override
   @pragma('vm:prefer-inline')
   ui.Rect localToGlobalRect(ui.Rect rect) => ui.Rect.fromLTRB(
-        rect.left / _zoom + _bound.left,
-        rect.top / _zoom + _bound.top,
-        rect.right / _zoom + _bound.left,
-        rect.bottom / _zoom + _bound.top,
-      );
+    rect.left / _zoom + _bound.left,
+    rect.top / _zoom + _bound.top,
+    rect.right / _zoom + _bound.left,
+    rect.bottom / _zoom + _bound.top,
+  );
+
+  /// Converts a viewport-space pointer delta to world-space delta (divide by zoom).
+  ui.Offset viewportDeltaToWorld(ui.Offset viewportDelta) {
+    final z = _zoom;
+    if (z <= 0) return ui.Offset.zero;
+    return ui.Offset(viewportDelta.dx / z, viewportDelta.dy / z);
+  }
 
   /// Moves the camera so the viewport center sits at [position] in world space.
   bool moveTo(ui.Offset position) {
