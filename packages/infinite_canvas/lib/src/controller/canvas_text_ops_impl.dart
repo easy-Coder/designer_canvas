@@ -438,7 +438,7 @@ final class CanvasTextOps {
   bool handleKeyEvent(KeyEvent event, HardwareKeyboard hw) {
     if (_editingQuadId == null) return false;
     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
-      stopEditing(commit: false);
+      stopEditing(commit: true);
       return true;
     }
     if (event is! KeyDownEvent) return false;
