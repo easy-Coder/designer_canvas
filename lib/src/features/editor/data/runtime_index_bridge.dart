@@ -5,12 +5,26 @@ import 'package:designer_canvas/src/features/editor/domain/node_entity.dart';
 import 'canvas_document_state.dart';
 import 'node_codec.dart';
 
-class RuntimeIndexBridge {
-  RuntimeIndexBridge({
+/// One-way projection from [CanvasDocumentState] (single source of truth)
+/// onto an [InfiniteCanvasController]'s runtime quadtree.
+///
+/// This is the only place where document changes become runtime
+/// [CanvasNode] mutations. There is no reverse path — gestures and inspector
+/// edits dispatch directly into [CanvasDocumentState], which then notifies
+/// this renderer to rebuild the affected runtime nodes.
+///
+/// Maintains a `nodeId ↔ quadId` index because the underlying runtime uses
+/// integer quad ids for hit testing and selection. Nothing about that index
+/// is "syncing"; it is purely an addressing translation between the two
+/// layers.
+class DocumentCanvasRenderer {
+  DocumentCanvasRenderer({
     required this.controller,
     required this.documentState,
     required this.nodeCodec,
-  });
+  }) {
+    documentState.addListener(_onDocumentChanged);
+  }
 
   final InfiniteCanvasController controller;
   final CanvasDocumentState documentState;
@@ -18,6 +32,12 @@ class RuntimeIndexBridge {
 
   final Map<NodeId, int> _quadIdByNodeId = <NodeId, int>{};
   final Map<int, NodeId> _nodeIdByQuadId = <int, NodeId>{};
+
+  /// Caches the last rendered entity instance per id so we can skip
+  /// rebuilding nodes whose backing entity didn't change. Document
+  /// mutations always produce a new instance (immutable copyWith), so an
+  /// identity check is enough.
+  final Map<NodeId, NodeEntity> _lastRendered = <NodeId, NodeEntity>{};
 
   Map<NodeId, int> get quadIdByNodeId =>
       Map<NodeId, int>.unmodifiable(_quadIdByNodeId);
@@ -28,6 +48,8 @@ class RuntimeIndexBridge {
 
   NodeId? nodeIdForQuadId(int quadId) => _nodeIdByQuadId[quadId];
 
+  /// Fully rebuilds the runtime view from the current document. Call once
+  /// after construction and any time the document is replaced wholesale.
   void rebuildFromDocument() {
     final existing = controller.orderedNodes.map((entry) => entry.$1).toList();
     for (final quadId in existing) {
@@ -35,32 +57,21 @@ class RuntimeIndexBridge {
     }
     _quadIdByNodeId.clear();
     _nodeIdByQuadId.clear();
+    _lastRendered.clear();
 
-    final ordered = <NodeEntity>[];
-    final root = documentState.rootOrder;
-    for (final nodeId in root) {
-      final entity = documentState.nodeById(nodeId);
-      if (entity != null) {
-        ordered.add(entity);
-      }
-    }
-    for (final entity in documentState.nodesById.values) {
-      if (root.contains(entity.id)) continue;
-      ordered.add(entity);
-    }
-
-    for (final entity in ordered) {
-      final node = nodeCodec.nodeFromEntity(entity);
-      final quadId = controller.addNode(node);
+    for (final entity in _orderedEntitiesForRender()) {
+      final quadId = controller.addNode(nodeCodec.nodeFromEntity(entity));
       _quadIdByNodeId[entity.id] = quadId;
       _nodeIdByQuadId[quadId] = entity.id;
+      _lastRendered[entity.id] = entity;
     }
   }
 
-  void applyUpsert(NodeId nodeId) {
+  /// Rebuilds a single node by replacing its runtime instance.
+  void replaceNode(NodeId nodeId) {
     final entity = documentState.nodeById(nodeId);
     if (entity == null) {
-      applyDelete(nodeId);
+      _detach(nodeId);
       return;
     }
     final existingQuadId = _quadIdByNodeId[nodeId];
@@ -69,55 +80,87 @@ class RuntimeIndexBridge {
       final newQuadId = controller.addNode(runtimeNode);
       _quadIdByNodeId[nodeId] = newQuadId;
       _nodeIdByQuadId[newQuadId] = nodeId;
+      _lastRendered[nodeId] = entity;
       return;
     }
+    final wasPrimary = controller.primaryQuadId == existingQuadId;
+    final wasSelected =
+        controller.selectedQuadIds.contains(existingQuadId);
     controller.removeNode(existingQuadId);
     final replacementQuadId = controller.addNode(runtimeNode);
     _quadIdByNodeId[nodeId] = replacementQuadId;
     _nodeIdByQuadId.remove(existingQuadId);
     _nodeIdByQuadId[replacementQuadId] = nodeId;
-    if (controller.primaryQuadId == existingQuadId) {
+    _lastRendered[nodeId] = entity;
+    if (wasPrimary) {
       controller.selectSingle(replacementQuadId);
+    } else if (wasSelected) {
+      final next = controller.selectedQuadIds.toSet()..add(replacementQuadId);
+      controller.setSelection(next, primary: controller.primaryQuadId);
     }
   }
 
-  void applyDelete(NodeId nodeId) {
+  void _detach(NodeId nodeId) {
     final quadId = _quadIdByNodeId.remove(nodeId);
     if (quadId == null) return;
     _nodeIdByQuadId.remove(quadId);
+    _lastRendered.remove(nodeId);
     controller.removeNode(quadId);
   }
 
-  NodeId promoteRuntimeNodeAsEntity(
-    int quadId, {
-    NodeId? nodeId,
-    NodeId? parentId,
-    NodeContainmentData? containment,
-  }) {
-    final node = controller.lookupNode(quadId);
-    if (node == null) {
-      throw StateError('Runtime node not found for quadId=$quadId');
+  /// Diff the current document against the cached runtime view, then add /
+  /// replace / remove only the entities whose backing instance changed.
+  ///
+  /// Document mutations always create a new immutable [NodeEntity] instance,
+  /// so identity equality against [_lastRendered] is sufficient to skip
+  /// no-op rebuilds.
+  void _onDocumentChanged() {
+    final desired = documentState.nodesById;
+    final stale = _quadIdByNodeId.keys
+        .where((id) => !desired.containsKey(id))
+        .toList(growable: false);
+    for (final id in stale) {
+      _detach(id);
     }
-    final id = nodeId ?? nodeCodec.newNodeId();
-    final entity = nodeCodec.entityFromNode(
-      node,
-      nodeId: id,
-      parentId: parentId,
-      containment: containment,
-    );
-    documentState.upsertNode(entity);
-    _quadIdByNodeId[id] = quadId;
-    _nodeIdByQuadId[quadId] = id;
-    return id;
+    for (final entity in _orderedEntitiesForRender()) {
+      final cached = _lastRendered[entity.id];
+      if (identical(cached, entity)) continue;
+      replaceNode(entity.id);
+    }
   }
 
-  List<NodeId> staleNodeIdsFromController() {
-    final stale = <NodeId>[];
-    for (final entry in _quadIdByNodeId.entries) {
-      if (controller.lookupNode(entry.value) == null) {
-        stale.add(entry.key);
+  /// Iterates entities in z-order (rootOrder first, then nested children of
+  /// each frame in the order they appear) so paint order reflects the
+  /// document tree.
+  Iterable<NodeEntity> _orderedEntitiesForRender() sync* {
+    final visited = <NodeId>{};
+    Iterable<NodeEntity> walk(NodeId id) sync* {
+      if (!visited.add(id)) return;
+      final entity = documentState.nodeById(id);
+      if (entity == null) return;
+      yield entity;
+      if (entity is FrameNodeEntity) {
+        for (final childId in entity.children) {
+          yield* walk(childId);
+        }
       }
     }
-    return stale;
+
+    for (final id in documentState.rootOrder) {
+      yield* walk(id);
+    }
+    // Catch any nodes that aren't reachable from rootOrder (e.g. orphans).
+    for (final id in documentState.nodesById.keys) {
+      yield* walk(id);
+    }
+  }
+
+  /// Permanent listener removal. Call from owning widget's `dispose`.
+  void dispose() {
+    documentState.removeListener(_onDocumentChanged);
   }
 }
+
+/// Shorthand alias preserved for components that imported the old name.
+@Deprecated('Use DocumentCanvasRenderer')
+typedef RuntimeIndexBridge = DocumentCanvasRenderer;

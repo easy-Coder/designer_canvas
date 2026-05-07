@@ -7,61 +7,36 @@ void main() {
   group('CanvasDocumentState', () {
     test('round-trips through DocumentCodec', () {
       final doc = CanvasDocumentState(docId: 'doc-1', createdAtEpochMs: 1);
-      final frame = NodeEntity(
+      final frame = FrameNodeEntity(
         id: 'frame-1',
-        type: NodeEntityType.frame,
-        label: 'Frame',
-        zIndex: 0,
-        visible: true,
-        locked: false,
-        transform: const NodeTransformData(
-          pivotX: 100,
-          pivotY: 100,
-          rotationRadians: 0,
-        ),
-        geometry: const {
-          'centerX': 100.0,
-          'centerY': 100.0,
-          'width': 300.0,
-          'height': 200.0,
-          'rotationRadians': 0.0,
-        },
-        style: const {
+        name: 'Frame',
+        pos: const NodePos(0, 0),
+        metadata: const {
           'kind': 'frame',
           'fill': {'color': 0x14B0BEC5},
+          'width': 300.0,
+          'height': 200.0,
+          'rotation': 0.0,
+          'zIndex': 0,
         },
+        children: const ['rect-1'],
       );
-      final child = NodeEntity(
+      final child = LeafNodeEntity(
         id: 'rect-1',
-        type: NodeEntityType.rect,
-        label: 'Rect',
-        zIndex: 2,
-        visible: true,
-        locked: false,
-        transform: const NodeTransformData(
-          pivotX: 120,
-          pivotY: 130,
-          rotationRadians: 0,
-        ),
-        geometry: const {
-          'centerX': 120.0,
-          'centerY': 130.0,
-          'width': 80.0,
-          'height': 60.0,
-          'rotationRadians': 0.0,
-        },
-        style: const {
+        name: 'Rect',
+        pos: const NodePos(100, 110),
+        metadata: const {
           'kind': 'rect',
           'fill': {'color': 0xFFE65100},
+          'width': 80.0,
+          'height': 60.0,
+          'rotation': 0.0,
+          'zIndex': 2,
         },
-        parentId: 'frame-1',
-        containment: const NodeContainmentData(
-          localPivotX: 20,
-          localPivotY: 30,
-        ),
+        type: NodeEntityType.rect,
       );
-      doc.upsertNode(frame, notify: false);
-      doc.upsertNode(child, notify: false);
+      doc.addNode(frame, notify: false);
+      doc.addNode(child, parentFrameId: 'frame-1', notify: false);
 
       final codec = DocumentCodec();
       final encoded = codec.toJson(doc);
@@ -71,52 +46,70 @@ void main() {
       expect(decoded.nodesById.length, 2);
       expect(decoded.parentOf('rect-1'), 'frame-1');
       expect(decoded.childrenOf('frame-1'), contains('rect-1'));
+      final restoredFrame = decoded.nodeById('frame-1');
+      expect(restoredFrame, isA<FrameNodeEntity>());
+      final restoredChild = decoded.nodeById('rect-1');
+      expect(restoredChild, isA<LeafNodeEntity>());
+      expect((restoredChild as LeafNodeEntity).type, NodeEntityType.rect);
       expect(decoded.validateInvariants(), isEmpty);
     });
 
-    test('reports cycles in relationship indexes', () {
+    test('reports cycles in frame children', () {
       final doc = CanvasDocumentState(docId: 'doc-cycle');
-      doc.upsertNode(
-        NodeEntity(
+      doc.addNode(
+        FrameNodeEntity(
           id: 'a',
-          type: NodeEntityType.frame,
-          label: 'A',
-          zIndex: 0,
-          visible: true,
-          locked: false,
-          transform: const NodeTransformData(
-            pivotX: 0,
-            pivotY: 0,
-            rotationRadians: 0,
-          ),
-          geometry: const {},
-          style: const {'kind': 'frame'},
-          parentId: 'b',
+          name: 'A',
+          pos: const NodePos(0, 0),
+          metadata: const {'kind': 'frame'},
+          children: const ['b'],
         ),
         notify: false,
       );
-      doc.upsertNode(
-        NodeEntity(
+      doc.addNode(
+        FrameNodeEntity(
           id: 'b',
-          type: NodeEntityType.frame,
-          label: 'B',
-          zIndex: 0,
-          visible: true,
-          locked: false,
-          transform: const NodeTransformData(
-            pivotX: 0,
-            pivotY: 0,
-            rotationRadians: 0,
-          ),
-          geometry: const {},
-          style: const {'kind': 'frame'},
-          parentId: 'a',
+          name: 'B',
+          pos: const NodePos(0, 0),
+          metadata: const {'kind': 'frame'},
+          children: const ['a'],
         ),
         notify: false,
       );
 
       final issues = doc.validateInvariants();
       expect(issues.any((e) => e.startsWith('cycle:')), isTrue);
+    });
+
+    test('JSON keeps the children array on frames only', () {
+      final doc = CanvasDocumentState(docId: 'doc-2');
+      doc.addNode(
+        FrameNodeEntity(
+          id: 'f',
+          name: 'F',
+          pos: const NodePos(10, 20),
+          metadata: const {'width': 100.0, 'height': 50.0},
+          children: const ['child-1'],
+        ),
+        notify: false,
+      );
+      doc.addNode(
+        LeafNodeEntity(
+          id: 'child-1',
+          name: 'Rect',
+          pos: const NodePos(15, 25),
+          metadata: const {'width': 30.0, 'height': 20.0},
+          type: NodeEntityType.rect,
+        ),
+        parentFrameId: 'f',
+        notify: false,
+      );
+
+      final json = doc.toJson();
+      final nodesJson =
+          (json['nodes'] as Map).cast<String, Map<String, dynamic>>();
+      expect(nodesJson['f']!['children'], <String>['child-1']);
+      expect(nodesJson['child-1']!.containsKey('children'), isFalse);
     });
   });
 }

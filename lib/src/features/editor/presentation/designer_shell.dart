@@ -16,7 +16,9 @@ import 'package:designer_canvas/src/features/editor/domain/nodes/text_node.dart'
 
 import 'package:designer_canvas/src/features/editor/domain/tool_style_defaults.dart';
 import 'package:designer_canvas/src/features/editor/data/canvas_document_state.dart';
+import 'package:designer_canvas/src/features/editor/data/node_codec.dart';
 import 'package:designer_canvas/src/features/editor/data/runtime_index_bridge.dart';
+import 'package:designer_canvas/src/features/editor/domain/node_entity.dart';
 import 'package:designer_canvas/src/features/editor/presentation/controller/designer_gesture_handler.dart';
 import 'package:designer_canvas/src/features/editor/presentation/editor_toolbar_metadata.dart';
 import 'package:designer_canvas/src/features/editor/presentation/property_inspector.dart';
@@ -32,7 +34,8 @@ class DesignerShell extends StatelessWidget {
     required this.gestureHandler,
     required this.canvasFocusNode,
     required this.documentState,
-    required this.runtimeBridge,
+    required this.renderer,
+    required this.nodeCodec,
     required this.lastUsedByGroup,
     required this.onToolbarToolSelected,
   });
@@ -44,7 +47,8 @@ class DesignerShell extends StatelessWidget {
   final DesignerGestureHandler gestureHandler;
   final FocusNode canvasFocusNode;
   final CanvasDocumentState documentState;
-  final RuntimeIndexBridge runtimeBridge;
+  final DocumentCanvasRenderer renderer;
+  final NodeCodec nodeCodec;
   final ValueNotifier<Map<EditorToolGroupId, CanvasTool>> lastUsedByGroup;
   final ValueChanged<CanvasTool> onToolbarToolSelected;
 
@@ -59,7 +63,7 @@ class DesignerShell extends StatelessWidget {
             child: _LayersPanel(
               controller: controller,
               documentState: documentState,
-              runtimeBridge: runtimeBridge,
+              renderer: renderer,
             ),
           ),
         ),
@@ -121,6 +125,9 @@ class DesignerShell extends StatelessWidget {
                   controller: controller,
                   tool: tool,
                   toolDefaults: toolDefaults,
+                  documentState: documentState,
+                  renderer: renderer,
+                  nodeCodec: nodeCodec,
                 ),
               ),
             ),
@@ -135,12 +142,12 @@ class _LayersPanel extends StatefulWidget {
   const _LayersPanel({
     required this.controller,
     required this.documentState,
-    required this.runtimeBridge,
+    required this.renderer,
   });
 
   final InfiniteCanvasController controller;
   final CanvasDocumentState documentState;
-  final RuntimeIndexBridge runtimeBridge;
+  final DocumentCanvasRenderer renderer;
 
   @override
   State<_LayersPanel> createState() => _LayersPanelState();
@@ -169,7 +176,7 @@ class _LayersPanelState extends State<_LayersPanel> {
     final rowsByNodeId = <String, _LayerListRow>{};
     final rowsByQuadId = <int, _LayerListRow>{};
     for (final (quadId, node) in ordered) {
-      final nodeId = widget.runtimeBridge.nodeIdForQuadId(quadId);
+      final nodeId = widget.renderer.nodeIdForQuadId(quadId);
       if (nodeId == null) {
         rowsByQuadId[quadId] = _LayerListRow(
           quadId: quadId,
@@ -181,13 +188,16 @@ class _LayersPanelState extends State<_LayersPanel> {
         );
         continue;
       }
+      final entity = widget.documentState.nodeById(nodeId);
+      final hasChildren =
+          entity is FrameNodeEntity && entity.children.isNotEmpty;
       rowsByNodeId[nodeId] = _LayerListRow(
         quadId: quadId,
         node: node,
         nodeId: nodeId,
         parentNodeId: widget.documentState.parentOf(nodeId),
         depth: 0,
-        hasChildren: widget.documentState.childrenOf(nodeId).isNotEmpty,
+        hasChildren: hasChildren,
       );
     }
 
