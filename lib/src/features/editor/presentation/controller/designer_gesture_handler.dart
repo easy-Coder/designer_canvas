@@ -797,7 +797,10 @@ class DesignerGestureHandler {
       if (controller.text.handleKeyEvent(event, HardwareKeyboard.instance)) {
         return true;
       }
+      // Editing text: never fall through to tool / camera shortcuts.
+      return false;
     }
+
     if (event is KeyDownEvent) {
       final nextTool = toolForKeyEvent(event);
       if (nextTool != null) {
@@ -811,6 +814,7 @@ class DesignerGestureHandler {
         return true;
       }
     }
+
     if (tool.value == CanvasTool.select) {
       return selectGestures.handleKeyEvent(event, controller);
     }

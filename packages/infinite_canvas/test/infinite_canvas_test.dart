@@ -302,10 +302,12 @@ void main() {
       ctrl.transform.end();
       expect(ctrl.node.lookup(rid)!.bounds.width >= 80, isTrue);
 
-      final textNode = SmokeTextNode();
+      final textNode = SmokeTextNode()..text = '';
       final tid = ctrl.node.add(textNode);
       ctrl.text.beginEditing(tid);
       expect(ctrl.text.editingQuadId, tid);
+      ctrl.text.insertText('hi');
+      expect(textNode.editingValue.text, 'hi');
       ctrl.text.toggleBold();
       expect(textNode.boldToggleCount, 1);
       ctrl.text.stopEditing(commit: true);

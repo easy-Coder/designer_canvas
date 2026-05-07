@@ -113,9 +113,6 @@ class CanvasTextImeClient implements DeltaTextInputClient {
     for (final delta in textEditingDeltas) {
       _value = delta.apply(_value);
       onValueChanged(_value);
-      if (isAttached) {
-        _connection?.setEditingState(_value);
-      }
     }
   }
 
@@ -123,9 +120,6 @@ class CanvasTextImeClient implements DeltaTextInputClient {
   void updateEditingValue(TextEditingValue value) {
     _value = value;
     onValueChanged(_value);
-    if (isAttached) {
-      _connection?.setEditingState(_value);
-    }
   }
 
   @override

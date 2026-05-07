@@ -68,6 +68,7 @@ class DesignerShell extends StatelessWidget {
             children: [
               Focus(
                 focusNode: canvasFocusNode,
+                autofocus: true,
                 onKeyEvent: (node, event) {
                   if (gestureHandler.handleKeyEvent(event, controller)) {
                     return KeyEventResult.handled;
@@ -76,8 +77,12 @@ class DesignerShell extends StatelessWidget {
                 },
                 child: InfiniteCanvasView(
                   controller: controller,
-                  onPointerEvent: (e) =>
-                      gestureHandler.handlePointerEvent(e, controller),
+                  onPointerEvent: (e) {
+                    if (e is PointerDownEvent && !canvasFocusNode.hasFocus) {
+                      canvasFocusNode.requestFocus();
+                    }
+                    gestureHandler.handlePointerEvent(e, controller);
+                  },
                 ),
               ),
               Align(

@@ -50,7 +50,9 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
       camera: Camera(
         viewportSize: const ui.Size(800, 600),
         position: ui.Offset.zero,
-        zoomDouble: 0.35,
+        zoomDouble: 0.05,
+        minZoom: 0.01,
+        maxZoom: 10.0,
       ),
       onNodeDoubleClick: _onNodeDoubleClick,
     );

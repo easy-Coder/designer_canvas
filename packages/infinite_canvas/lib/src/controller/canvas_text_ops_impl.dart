@@ -67,7 +67,6 @@ final class CanvasTextOps {
         m.applyEditingValue(value);
         m.caretVisible = true;
         _c.updateNode(id);
-        _ime?.updateLocalValue(value);
         _c.invalidate();
       },
       onDone: () => stopEditing(commit: true),
@@ -516,6 +515,21 @@ final class CanvasTextOps {
       _apply(next);
       return true;
     }
+
+    // Fallback only when the IME is not delivering characters (e.g. headless
+    // tests, platforms without text input, or transient connection loss).
+    if (!hw.isMetaPressed && !hw.isControlPressed && !hw.isAltPressed) {
+      final ch = event.character;
+      final imeAlive = _ime != null && _ime!.isAttached;
+      if (!imeAlive &&
+          ch != null &&
+          ch.isNotEmpty &&
+          ch.codeUnitAt(0) >= 0x20) {
+        insertText(ch);
+        return true;
+      }
+    }
+
     return false;
   }
 }
