@@ -1,7 +1,10 @@
-import 'dart:ui' as ui;
-
 typedef NodeId = String;
 
+/// Discriminator carried by every [NodeEntity] subtype.
+///
+/// `frame` always corresponds to [FrameNodeEntity]; everything else is a
+/// [LeafNodeEntity]. The enum is preserved exclusively so JSON payloads keep a
+/// flat, human-readable type tag.
 enum NodeEntityType {
   rect,
   frame,
@@ -21,232 +24,190 @@ NodeEntityType nodeEntityTypeFromName(String raw) {
   );
 }
 
-class NodeVersion {
-  const NodeVersion({
-    this.actorId,
-    this.seq = 0,
-    this.lamport = 0,
-    this.updatedAtEpochMs,
-  });
+/// World-space top-left position for a node. All other geometry (width,
+/// height, rotation, shape-specific anchors) lives in [NodeEntity.metadata].
+class NodePos {
+  const NodePos(this.x, this.y);
 
-  final String? actorId;
-  final int seq;
-  final int lamport;
-  final int? updatedAtEpochMs;
+  final double x;
+  final double y;
 
-  Map<String, dynamic> toJson() {
-    return {
-      'actorId': actorId,
-      'seq': seq,
-      'lamport': lamport,
-      'updatedAtEpochMs': updatedAtEpochMs,
-    };
+  NodePos copyWith({double? x, double? y}) {
+    return NodePos(x ?? this.x, y ?? this.y);
   }
 
-  factory NodeVersion.fromJson(Map<String, dynamic> json) {
-    return NodeVersion(
-      actorId: json['actorId'] as String?,
-      seq: (json['seq'] as num?)?.toInt() ?? 0,
-      lamport: (json['lamport'] as num?)?.toInt() ?? 0,
-      updatedAtEpochMs: (json['updatedAtEpochMs'] as num?)?.toInt(),
+  Map<String, dynamic> toJson() => {'x': x, 'y': y};
+
+  factory NodePos.fromJson(Map<String, dynamic> json) {
+    return NodePos(
+      (json['x'] as num?)?.toDouble() ?? 0,
+      (json['y'] as num?)?.toDouble() ?? 0,
     );
   }
 
-  NodeVersion copyWith({
-    String? actorId,
-    int? seq,
-    int? lamport,
-    int? updatedAtEpochMs,
-  }) {
-    return NodeVersion(
-      actorId: actorId ?? this.actorId,
-      seq: seq ?? this.seq,
-      lamport: lamport ?? this.lamport,
-      updatedAtEpochMs: updatedAtEpochMs ?? this.updatedAtEpochMs,
-    );
-  }
+  @override
+  bool operator ==(Object other) =>
+      other is NodePos && other.x == x && other.y == y;
+
+  @override
+  int get hashCode => Object.hash(x, y);
 }
 
-class NodeTransformData {
-  const NodeTransformData({
-    required this.pivotX,
-    required this.pivotY,
-    required this.rotationRadians,
-  });
-
-  final double pivotX;
-  final double pivotY;
-  final double rotationRadians;
-
-  ui.Offset get pivot => ui.Offset(pivotX, pivotY);
-
-  Map<String, dynamic> toJson() {
-    return {
-      'pivotX': pivotX,
-      'pivotY': pivotY,
-      'rotationRadians': rotationRadians,
-    };
-  }
-
-  factory NodeTransformData.fromJson(Map<String, dynamic> json) {
-    return NodeTransformData(
-      pivotX: (json['pivotX'] as num?)?.toDouble() ?? 0,
-      pivotY: (json['pivotY'] as num?)?.toDouble() ?? 0,
-      rotationRadians: (json['rotationRadians'] as num?)?.toDouble() ?? 0,
-    );
-  }
-
-  NodeTransformData copyWith({
-    double? pivotX,
-    double? pivotY,
-    double? rotationRadians,
-  }) {
-    return NodeTransformData(
-      pivotX: pivotX ?? this.pivotX,
-      pivotY: pivotY ?? this.pivotY,
-      rotationRadians: rotationRadians ?? this.rotationRadians,
-    );
-  }
-}
-
-class NodeContainmentData {
-  const NodeContainmentData({
-    required this.localPivotX,
-    required this.localPivotY,
-  });
-
-  final double localPivotX;
-  final double localPivotY;
-
-  ui.Offset get localPivot => ui.Offset(localPivotX, localPivotY);
-
-  Map<String, dynamic> toJson() {
-    return {'localPivotX': localPivotX, 'localPivotY': localPivotY};
-  }
-
-  factory NodeContainmentData.fromJson(Map<String, dynamic> json) {
-    return NodeContainmentData(
-      localPivotX: (json['localPivotX'] as num?)?.toDouble() ?? 0,
-      localPivotY: (json['localPivotY'] as num?)?.toDouble() ?? 0,
-    );
-  }
-}
-
-class NodeEntity {
+/// Sealed root for every node record stored in [CanvasDocumentState].
+///
+/// Concrete types: [LeafNodeEntity] (any non-frame node) and
+/// [FrameNodeEntity] (only kind that owns `children`). Exhaustive `switch`
+/// statements over [NodeEntity] therefore enforce the "only frames have
+/// children" invariant at compile time.
+///
+/// Reserved keys inside [metadata]:
+///   - common: `width`, `height`, `rotation`, `zIndex`, `visible`, `locked`
+///   - rect/frame/polygon/star/image: `fill`, `stroke`, `shadow`, `cornerRadius`, `sides`
+///   - circle: `radius`
+///   - line/arrow: `startX`, `startY`, `endX`, `endY`, `stroke`, `shadow`
+///   - image: `sourceFileName`, `sourceFilePath`, `intrinsicWidth`, `intrinsicHeight`
+///   - text: `text`, `color`, `fontFamily`, `fontSize`, `fontStyle`,
+///           `fontWeight`, `textAlign`, `verticalAlign`, `layoutMode`,
+///           `fixedWidth`, `fixedHeight`, `backgroundColor`,
+///           `backgroundCornerRadius`
+sealed class NodeEntity {
   const NodeEntity({
     required this.id,
-    required this.type,
-    required this.label,
-    required this.zIndex,
-    required this.visible,
-    required this.locked,
-    required this.transform,
-    required this.geometry,
-    required this.style,
-    this.text,
-    this.parentId,
-    this.containment,
-    this.version = const NodeVersion(),
+    required this.name,
+    required this.pos,
+    required this.metadata,
   });
 
   final NodeId id;
-  final NodeEntityType type;
-  final String label;
-  final int zIndex;
-  final bool visible;
-  final bool locked;
-  final NodeTransformData transform;
-  final Map<String, dynamic> geometry;
-  final Map<String, dynamic> style;
-  final String? text;
-  final NodeId? parentId;
-  final NodeContainmentData? containment;
-  final NodeVersion version;
+  final String name;
+  final NodePos pos;
+  final Map<String, dynamic> metadata;
 
+  NodeEntityType get type;
+
+  /// Encodes the entity to a flat JSON map. Subtypes append `children` only
+  /// where appropriate.
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'name': name,
       'type': type.name,
-      'label': label,
-      'zIndex': zIndex,
-      'visible': visible,
-      'locked': locked,
-      'transform': transform.toJson(),
-      'geometry': geometry,
-      'style': style,
-      'text': text,
-      'parentId': parentId,
-      'containment': containment?.toJson(),
-      'version': version.toJson(),
+      'pos': pos.toJson(),
+      'metadata': Map<String, dynamic>.from(metadata),
     };
   }
 
-  factory NodeEntity.fromJson(Map<String, dynamic> json) {
-    return NodeEntity(
-      id: (json['id'] as String?) ?? '',
-      type: nodeEntityTypeFromName((json['type'] as String?) ?? 'rect'),
-      label: (json['label'] as String?) ?? 'Node',
-      zIndex: (json['zIndex'] as num?)?.toInt() ?? 0,
-      visible: (json['visible'] as bool?) ?? true,
-      locked: (json['locked'] as bool?) ?? false,
-      transform: NodeTransformData.fromJson(
-        (json['transform'] as Map?)?.cast<String, dynamic>() ??
-            const <String, dynamic>{},
-      ),
-      geometry:
-          (json['geometry'] as Map?)?.cast<String, dynamic>() ??
-          const <String, dynamic>{},
-      style:
-          (json['style'] as Map?)?.cast<String, dynamic>() ??
-          const <String, dynamic>{},
-      text: json['text'] as String?,
-      parentId: json['parentId'] as String?,
-      containment: (json['containment'] as Map?)?.cast<String, dynamic>().let(
-        NodeContainmentData.fromJson,
-      ),
-      version: NodeVersion.fromJson(
-        (json['version'] as Map?)?.cast<String, dynamic>() ??
-            const <String, dynamic>{},
-      ),
+  /// Dispatches to [FrameNodeEntity.fromJson] or [LeafNodeEntity.fromJson]
+  /// based on the `type` discriminator.
+  static NodeEntity fromJson(Map<String, dynamic> json) {
+    final type = nodeEntityTypeFromName((json['type'] as String?) ?? 'rect');
+    if (type == NodeEntityType.frame) {
+      return FrameNodeEntity.fromJson(json);
+    }
+    return LeafNodeEntity.fromJson(json);
+  }
+}
+
+/// Any non-frame node. Cannot have children.
+class LeafNodeEntity extends NodeEntity {
+  LeafNodeEntity({
+    required super.id,
+    required super.name,
+    required super.pos,
+    required Map<String, dynamic> metadata,
+    required NodeEntityType type,
+  })  : assert(
+          type != NodeEntityType.frame,
+          'Use FrameNodeEntity for frame nodes',
+        ),
+        _type = type,
+        super(metadata: Map<String, dynamic>.from(metadata));
+
+  final NodeEntityType _type;
+
+  @override
+  NodeEntityType get type => _type;
+
+  LeafNodeEntity copyWith({
+    String? name,
+    NodePos? pos,
+    Map<String, dynamic>? metadata,
+  }) {
+    return LeafNodeEntity(
+      id: id,
+      name: name ?? this.name,
+      pos: pos ?? this.pos,
+      metadata: metadata ?? this.metadata,
+      type: type,
     );
   }
 
-  NodeEntity copyWith({
-    NodeId? id,
-    NodeEntityType? type,
-    String? label,
-    int? zIndex,
-    bool? visible,
-    bool? locked,
-    NodeTransformData? transform,
-    Map<String, dynamic>? geometry,
-    Map<String, dynamic>? style,
-    String? text,
-    bool clearText = false,
-    NodeId? parentId,
-    bool clearParentId = false,
-    NodeContainmentData? containment,
-    bool clearContainment = false,
-    NodeVersion? version,
-  }) {
-    return NodeEntity(
-      id: id ?? this.id,
-      type: type ?? this.type,
-      label: label ?? this.label,
-      zIndex: zIndex ?? this.zIndex,
-      visible: visible ?? this.visible,
-      locked: locked ?? this.locked,
-      transform: transform ?? this.transform,
-      geometry: geometry ?? this.geometry,
-      style: style ?? this.style,
-      text: clearText ? null : (text ?? this.text),
-      parentId: clearParentId ? null : (parentId ?? this.parentId),
-      containment: clearContainment ? null : (containment ?? this.containment),
-      version: version ?? this.version,
+  factory LeafNodeEntity.fromJson(Map<String, dynamic> json) {
+    return LeafNodeEntity(
+      id: (json['id'] as String?) ?? '',
+      name: (json['name'] as String?) ?? 'Node',
+      pos: NodePos.fromJson(
+        (json['pos'] as Map?)?.cast<String, dynamic>() ??
+            const <String, dynamic>{},
+      ),
+      metadata: (json['metadata'] as Map?)?.cast<String, dynamic>() ??
+          const <String, dynamic>{},
+      type: nodeEntityTypeFromName((json['type'] as String?) ?? 'rect'),
     );
   }
 }
 
-extension _MapLet<K, V> on Map<K, V> {
-  T let<T>(T Function(Map<K, V>) mapper) => mapper(this);
+/// A frame node; the only kind that owns child node ids.
+class FrameNodeEntity extends NodeEntity {
+  FrameNodeEntity({
+    required super.id,
+    required super.name,
+    required super.pos,
+    required Map<String, dynamic> metadata,
+    List<NodeId> children = const <NodeId>[],
+  })  : children = List<NodeId>.unmodifiable(children),
+        super(metadata: Map<String, dynamic>.from(metadata));
+
+  final List<NodeId> children;
+
+  @override
+  NodeEntityType get type => NodeEntityType.frame;
+
+  FrameNodeEntity copyWith({
+    String? name,
+    NodePos? pos,
+    Map<String, dynamic>? metadata,
+    List<NodeId>? children,
+  }) {
+    return FrameNodeEntity(
+      id: id,
+      name: name ?? this.name,
+      pos: pos ?? this.pos,
+      metadata: metadata ?? this.metadata,
+      children: children ?? this.children,
+    );
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    final base = super.toJson();
+    base['children'] = List<NodeId>.from(children);
+    return base;
+  }
+
+  factory FrameNodeEntity.fromJson(Map<String, dynamic> json) {
+    return FrameNodeEntity(
+      id: (json['id'] as String?) ?? '',
+      name: (json['name'] as String?) ?? 'Frame',
+      pos: NodePos.fromJson(
+        (json['pos'] as Map?)?.cast<String, dynamic>() ??
+            const <String, dynamic>{},
+      ),
+      metadata: (json['metadata'] as Map?)?.cast<String, dynamic>() ??
+          const <String, dynamic>{},
+      children: (json['children'] as List? ?? const <dynamic>[])
+          .whereType<String>()
+          .toList(growable: false),
+    );
+  }
 }

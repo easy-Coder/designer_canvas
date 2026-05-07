@@ -3,7 +3,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
+import 'package:designer_canvas/src/features/editor/data/canvas_document_state.dart';
+import 'package:designer_canvas/src/features/editor/data/node_codec.dart';
+import 'package:designer_canvas/src/features/editor/data/runtime_index_bridge.dart';
 import 'package:designer_canvas/src/features/editor/domain/canvas_tool.dart';
+import 'package:designer_canvas/src/features/editor/domain/node_entity.dart';
 import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/line_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/polygon_node.dart';
@@ -30,11 +34,17 @@ class PropertyInspector extends StatefulWidget {
     required this.controller,
     required this.tool,
     required this.toolDefaults,
+    required this.documentState,
+    required this.renderer,
+    required this.nodeCodec,
   });
 
   final InfiniteCanvasController controller;
   final ValueNotifier<CanvasTool> tool;
   final ValueNotifier<ToolStyleDefaults> toolDefaults;
+  final CanvasDocumentState documentState;
+  final DocumentCanvasRenderer renderer;
+  final NodeCodec nodeCodec;
 
   @override
   State<PropertyInspector> createState() => _PropertyInspectorState();
@@ -75,10 +85,22 @@ class _PropertyInspectorState extends State<PropertyInspector> {
 
   void _applyToSelection(void Function(CanvasNode n) patch) {
     if (_scope != InspectorScope.selectedNode) return;
+    final snapshots = <NodeEntity>[];
     for (final (id, n) in _orderedSelection()) {
       patch(n);
       _c.node.reindex(id);
+      final nodeId = widget.renderer.nodeIdForQuadId(id);
+      if (nodeId == null) continue;
+      final current = widget.documentState.nodeById(nodeId);
+      if (current == null) continue;
+      final next = widget.nodeCodec.entitySnapshotFor(current, n);
+      if (!identical(current, next)) snapshots.add(next);
     }
+    if (snapshots.isEmpty) return;
+    for (final entity in snapshots) {
+      widget.documentState.replaceEntity(entity, notify: false);
+    }
+    widget.documentState.emitChange();
   }
 
   void _applyToolDefault(NodeStyle style) {

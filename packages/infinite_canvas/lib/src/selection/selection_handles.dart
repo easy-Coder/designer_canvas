@@ -16,53 +16,54 @@ enum SelectionHandleKind {
 
 /// Hit-test and paint selection transform handles in **viewport** space.
 ///
-/// Knob size, rotate offset, and arc stroke derive from **world-space** constants
-/// multiplied by [zoom] (same scale as [Camera.globalToLocalRect] extents), so
-/// chrome grows and shrinks on screen like scene geometry.
+/// LOD behavior:
+///
+/// - When `zoom < _minVisibleZoom` the knobs and rotate affordance are
+///   hidden entirely and [hitTest] returns `null`. The selection bounding
+///   rect (drawn separately by the painter) still shows.
+/// - At every other zoom level handles render at a fixed pixel size so the
+///   chrome stays consistently small at high zoom and never balloons at
+///   low zoom.
 final class SelectionHandles {
   SelectionHandles._();
 
-  /// World-space half-extent of a square handle (center to edge along one axis).
-  static const double handleHalfWorld = 6;
+  /// Below this zoom level the handles disappear and become non-interactive.
+  static const double _minVisibleZoom = 0.3;
 
-  /// World-space distance above the top edge to the rotation affordance center.
-  static const double rotateOffsetWorld = 20;
+  /// Viewport-pixel half-extent of a square handle (full knob is 14 x 14).
+  static const double _handleHalfPx = 7.0;
 
-  /// World-space corner radius for square knobs (RRect).
-  static const double knobCornerRadiusWorld = 1;
+  /// Viewport-pixel distance above the top edge to the rotate affordance.
+  static const double _rotateOffsetPx = 22.0;
 
-  /// World-space stroke width for the rotation arc.
-  static const double arcStrokeWidthWorld = 1.5;
+  /// Viewport-pixel corner radius for square knobs (RRect).
+  static const double _knobCornerRadiusPx = 2.0;
 
-  static double _knobHalfViewport(double zoom) =>
-      (handleHalfWorld * zoom).clamp(2.0, 80.0);
+  /// Viewport-pixel stroke width for the rotation arc.
+  static const double _arcStrokeWidthPx = 1.5;
 
-  static double _rotateAboveTopViewport(double zoom) =>
-      (rotateOffsetWorld * zoom).clamp(4.0, 120.0);
-
-  static double _knobCornerRadiusViewport(double zoom) =>
-      (knobCornerRadiusWorld * zoom).clamp(0.5, 12.0);
+  static bool _handlesVisibleAt(double zoom) => zoom >= _minVisibleZoom;
 
   static ui.Rect _knob(ui.Offset c, double half) =>
       ui.Rect.fromCenter(center: c, width: half * 2, height: half * 2);
 
-  /// Returns the first handle hit by [local] in viewport coordinates, or null.
-  ///
-  /// [zoom] is [Camera.zoomDouble]; geometry scales with `zoom` like world bounds.
+  /// Returns the first handle hit by [local] in viewport coordinates, or
+  /// null. Always returns null when handles are hidden by LOD.
   static SelectionHandleKind? hitTest({
     required ui.Rect viewportRect,
     required ui.Offset local,
     required double zoom,
   }) {
-    final half = _knobHalfViewport(zoom);
+    if (!_handlesVisibleAt(zoom)) return null;
+
+    const half = _handleHalfPx;
     final l = viewportRect.left;
     final t = viewportRect.top;
     final r = viewportRect.right;
     final b = viewportRect.bottom;
     final cx = (l + r) / 2;
 
-    final rotAbove = _rotateAboveTopViewport(zoom);
-    final rotCenter = ui.Offset(cx, t - rotAbove);
+    final rotCenter = ui.Offset(cx, t - _rotateOffsetPx);
     if (ui.Offset(local.dx - rotCenter.dx, local.dy - rotCenter.dy).distance <=
         half * 1.2) {
       return SelectionHandleKind.rotate;
@@ -95,6 +96,10 @@ final class SelectionHandles {
   }
 
   /// Draws transform handles for [viewportRect] (selection union in pixels).
+  ///
+  /// The bounding rect is always painted with [boxPaint] (callers may pass a
+  /// transparent paint to suppress it). Knobs and the rotate affordance are
+  /// hidden when `zoom < _minVisibleZoom`.
   static void paint({
     required ui.Canvas canvas,
     required ui.Rect viewportRect,
@@ -103,9 +108,11 @@ final class SelectionHandles {
     required ui.Paint knobFill,
     required ui.Paint knobStroke,
   }) {
-    final half = _knobHalfViewport(zoom);
-    final cornerR = _knobCornerRadiusViewport(zoom);
     canvas.drawRect(viewportRect, boxPaint);
+    if (!_handlesVisibleAt(zoom)) return;
+
+    const half = _handleHalfPx;
+    const cornerR = _knobCornerRadiusPx;
 
     final l = viewportRect.left;
     final t = viewportRect.top;
@@ -130,7 +137,7 @@ final class SelectionHandles {
       canvas.drawRRect(rr, knobStroke);
     }
 
-    final rot = ui.Offset(cx, t - _rotateAboveTopViewport(zoom));
+    final rot = ui.Offset(cx, t - _rotateOffsetPx);
     canvas.drawCircle(rot, half * 1.1, knobFill);
     canvas.drawCircle(rot, half * 1.1, knobStroke);
 
@@ -145,7 +152,7 @@ final class SelectionHandles {
     final arcStroke = ui.Paint()
       ..color = knobStroke.color
       ..style = ui.PaintingStyle.stroke
-      ..strokeWidth = (arcStrokeWidthWorld * zoom).clamp(0.5, 8.0);
+      ..strokeWidth = _arcStrokeWidthPx;
     canvas.drawPath(arc, arcStroke);
   }
 }

@@ -5,14 +5,13 @@ import 'package:designer_canvas/src/features/editor/data/node_codec.dart';
 import 'package:designer_canvas/src/features/editor/data/runtime_index_bridge.dart';
 import 'package:designer_canvas/src/features/editor/domain/canvas_tool.dart';
 import 'package:designer_canvas/src/features/editor/domain/frame_size_presets.dart';
+import 'package:designer_canvas/src/features/editor/domain/node_entity.dart';
 import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
-import 'package:designer_canvas/src/features/editor/domain/nodes/rect_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/text_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/tool_style_defaults.dart';
 import 'package:designer_canvas/src/features/editor/presentation/controller/canvas_input_config.dart';
 import 'package:designer_canvas/src/features/editor/presentation/controller/canvas_select_gestures.dart';
 import 'package:designer_canvas/src/features/editor/presentation/controller/designer_gesture_handler.dart';
-import 'package:designer_canvas/src/features/editor/presentation/controller/document_reducer.dart';
 import 'package:designer_canvas/src/features/editor/presentation/controller/pending_image_placement.dart';
 import 'package:designer_canvas/src/features/editor/presentation/designer_shell.dart';
 import 'package:designer_canvas/src/features/editor/presentation/editor_toolbar_metadata.dart';
@@ -38,8 +37,7 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
   late final FocusNode _canvasFocusNode;
   late final CanvasDocumentState _documentState;
   late final NodeCodec _nodeCodec;
-  late final RuntimeIndexBridge _runtimeBridge;
-  late final DocumentReducer _documentReducer;
+  late final DocumentCanvasRenderer _renderer;
   late final ValueNotifier<Map<EditorToolGroupId, CanvasTool>> _lastUsedByGroup;
   late final ValueNotifier<PendingImagePlacement?> _pendingImagePlacement;
 
@@ -64,39 +62,40 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
       docId: 'local-doc',
       createdAtEpochMs: DateTime.now().millisecondsSinceEpoch,
     );
-    _runtimeBridge = RuntimeIndexBridge(
+    _renderer = DocumentCanvasRenderer(
       controller: _controller,
       documentState: _documentState,
       nodeCodec: _nodeCodec,
     );
-    _documentReducer = DocumentReducer(
-      documentState: _documentState,
-      runtimeBridge: _runtimeBridge,
-    );
     _canvasFocusNode = FocusNode(debugLabel: 'canvas-focus');
-    final seedNodes = <RectNode>[
-      RectNode(
-        center: ui.Offset.zero,
-        width: 240,
-        height: 160,
+
+    // Seed two rectangles directly into the document. The renderer will
+    // project them into runtime nodes once the listener fires below.
+    _documentState.addNode(
+      _nodeCodec.rectLikeEntity(
+        id: _nodeCodec.newNodeId(),
+        type: NodeEntityType.rect,
+        name: 'Rectangle',
+        rect: const ui.Rect.fromLTWH(-120, -80, 240, 160),
         style: const RectNodeStyle(
           fill: FillStyleData(color: ui.Color(0xFF2E7D32)),
         ),
       ),
-      RectNode(
-        center: const ui.Offset(130, 90),
-        width: 100,
-        height: 100,
+      notify: false,
+    );
+    _documentState.addNode(
+      _nodeCodec.rectLikeEntity(
+        id: _nodeCodec.newNodeId(),
+        type: NodeEntityType.rect,
+        name: 'Rectangle',
+        rect: const ui.Rect.fromLTWH(80, 40, 100, 100),
         style: const RectNodeStyle(
           fill: FillStyleData(color: ui.Color(0xFF1565C0)),
         ),
       ),
-    ];
-    for (final seed in seedNodes) {
-      _documentState.upsertNode(_nodeCodec.entityFromNode(seed), notify: false);
-    }
-    _documentState.emitChange();
-    _runtimeBridge.rebuildFromDocument();
+      notify: false,
+    );
+    _renderer.rebuildFromDocument();
 
     _tool = ValueNotifier(CanvasTool.select);
     _lastUsedByGroup = ValueNotifier({
@@ -112,8 +111,8 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
       toolDefaults: _toolDefaults,
       frameSizePreset: _frameSizePreset,
       documentState: _documentState,
-      runtimeBridge: _runtimeBridge,
-      documentReducer: _documentReducer,
+      renderer: _renderer,
+      nodeCodec: _nodeCodec,
       selectGestures: _selectGestures,
       gestureConfig: _gestureConfig,
       canvasFocusNode: _canvasFocusNode,
@@ -193,6 +192,7 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
   @override
   void dispose() {
     _designerHandler.dispose();
+    _renderer.dispose();
     _canvasFocusNode.dispose();
     _tool.dispose();
     _pendingImagePlacement.dispose();
@@ -216,7 +216,8 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
           gestureHandler: _designerHandler,
           canvasFocusNode: _canvasFocusNode,
           documentState: _documentState,
-          runtimeBridge: _runtimeBridge,
+          renderer: _renderer,
+          nodeCodec: _nodeCodec,
           lastUsedByGroup: _lastUsedByGroup,
           onToolbarToolSelected: _setToolbarTool,
         ),
