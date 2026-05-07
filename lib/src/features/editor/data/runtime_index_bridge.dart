@@ -68,6 +68,13 @@ class DocumentCanvasRenderer {
   }
 
   /// Rebuilds a single node by replacing its runtime instance.
+  ///
+  /// Selection is intentionally not touched here. When the document fires
+  /// a batched change that replaces several selected nodes, mutating
+  /// selection per-node would collapse multi-selection (the first
+  /// `selectSingle` for a primary replacement would clear the rest before
+  /// they are remapped). Selection is preserved by document node id around
+  /// the whole batch in [_onDocumentChanged].
   void replaceNode(NodeId nodeId) {
     final entity = documentState.nodeById(nodeId);
     if (entity == null) {
@@ -83,21 +90,12 @@ class DocumentCanvasRenderer {
       _lastRendered[nodeId] = entity;
       return;
     }
-    final wasPrimary = controller.primaryQuadId == existingQuadId;
-    final wasSelected =
-        controller.selectedQuadIds.contains(existingQuadId);
     controller.removeNode(existingQuadId);
     final replacementQuadId = controller.addNode(runtimeNode);
     _quadIdByNodeId[nodeId] = replacementQuadId;
     _nodeIdByQuadId.remove(existingQuadId);
     _nodeIdByQuadId[replacementQuadId] = nodeId;
     _lastRendered[nodeId] = entity;
-    if (wasPrimary) {
-      controller.selectSingle(replacementQuadId);
-    } else if (wasSelected) {
-      final next = controller.selectedQuadIds.toSet()..add(replacementQuadId);
-      controller.setSelection(next, primary: controller.primaryQuadId);
-    }
   }
 
   void _detach(NodeId nodeId) {
@@ -114,19 +112,56 @@ class DocumentCanvasRenderer {
   /// Document mutations always create a new immutable [NodeEntity] instance,
   /// so identity equality against [_lastRendered] is sufficient to skip
   /// no-op rebuilds.
+  ///
+  /// Selection is snapshotted by document node id before any runtime
+  /// mutations and restored afterwards. Without this, replacing several
+  /// selected runtime nodes in one batch would collapse multi-selection
+  /// because each replacement assigns a fresh quad id.
   void _onDocumentChanged() {
     final desired = documentState.nodesById;
+
+    final selectedNodeIds = <NodeId>{};
+    for (final quadId in controller.selectedQuadIds) {
+      final id = _nodeIdByQuadId[quadId];
+      if (id != null) selectedNodeIds.add(id);
+    }
+    final primaryQuadId = controller.primaryQuadId;
+    final primaryNodeId =
+        primaryQuadId == null ? null : _nodeIdByQuadId[primaryQuadId];
+
     final stale = _quadIdByNodeId.keys
         .where((id) => !desired.containsKey(id))
         .toList(growable: false);
     for (final id in stale) {
       _detach(id);
     }
+    var anyReplaced = false;
     for (final entity in _orderedEntitiesForRender()) {
       final cached = _lastRendered[entity.id];
       if (identical(cached, entity)) continue;
       replaceNode(entity.id);
+      anyReplaced = true;
     }
+
+    if (!anyReplaced && stale.isEmpty) return;
+
+    final nextSelectedQuadIds = <int>{};
+    for (final nodeId in selectedNodeIds) {
+      final quadId = _quadIdByNodeId[nodeId];
+      if (quadId != null) nextSelectedQuadIds.add(quadId);
+    }
+    final nextPrimaryQuadId = primaryNodeId == null
+        ? null
+        : _quadIdByNodeId[primaryNodeId];
+    if (nextSelectedQuadIds.isEmpty &&
+        controller.selectedQuadIds.isEmpty) {
+      return;
+    }
+    controller.setSelection(
+      nextSelectedQuadIds,
+      primary: nextPrimaryQuadId ??
+          (nextSelectedQuadIds.isEmpty ? null : nextSelectedQuadIds.first),
+    );
   }
 
   /// Iterates entities in z-order (rootOrder first, then nested children of
