@@ -104,6 +104,13 @@ class Camera with ChangeNotifier implements CameraView {
         rect.bottom / _zoom + _bound.top,
       );
 
+  /// Converts a viewport-space pointer delta to world-space delta (divide by zoom).
+  ui.Offset viewportDeltaToWorld(ui.Offset viewportDelta) {
+    final z = _zoom;
+    if (z <= 0) return ui.Offset.zero;
+    return ui.Offset(viewportDelta.dx / z, viewportDelta.dy / z);
+  }
+
   /// Moves the camera so the viewport center sits at [position] in world space.
   bool moveTo(ui.Offset position) {
     var next = position;

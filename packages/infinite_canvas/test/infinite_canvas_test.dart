@@ -1,10 +1,10 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
+import 'fixtures/smoke_text_node.dart';
 import 'fixtures/visual_rect_test_node.dart';
 
 void main() {
@@ -52,9 +52,9 @@ void main() {
   });
 
   group('Selection + hit testing', () {
-    test('pickTopNodeAtWorld same zIndex prefers higher quad id', () {
-      const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
-      final ctrl = InfiniteCanvasController(worldBounds: world);
+    test('node.hitTest same zIndex prefers higher quad id', () {
+      final ctrl = InfiniteCanvasController();
+      ctrl.setWorldBounds(const ui.Rect.fromLTWH(-5000, -5000, 10000, 10000));
       ctrl.camera.changeSize(const ui.Size(400, 300));
       ctrl.camera.moveTo(ui.Offset.zero);
       ctrl.camera.setZoomDouble(1.0);
@@ -67,16 +67,16 @@ void main() {
         const ui.Rect.fromLTWH(40, 40, 100, 100),
         zIndex: 3,
       );
-      final idFirst = ctrl.addNode(first);
-      final idSecond = ctrl.addNode(second);
+      final idFirst = ctrl.node.add(first);
+      final idSecond = ctrl.node.add(second);
       expect(idSecond > idFirst, isTrue);
-      final hit = ctrl.pickTopNodeAtWorld(const ui.Offset(50, 50));
+      final hit = ctrl.node.hitTest(const ui.Offset(50, 50));
       expect(hit, idSecond);
     });
 
-    test('pickTopNodeAtWorld prefers higher zIndex', () {
-      const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
-      final ctrl = InfiniteCanvasController(worldBounds: world);
+    test('node.hitTest prefers higher zIndex', () {
+      final ctrl = InfiniteCanvasController();
+      ctrl.setWorldBounds(const ui.Rect.fromLTWH(-5000, -5000, 10000, 10000));
       ctrl.camera.changeSize(const ui.Size(400, 300));
       ctrl.camera.moveTo(ui.Offset.zero);
       ctrl.camera.setZoomDouble(1.0);
@@ -89,17 +89,17 @@ void main() {
         const ui.Rect.fromLTWH(40, 40, 100, 100),
         zIndex: 5,
       );
-      ctrl.addNode(low);
-      ctrl.addNode(high);
+      ctrl.node.add(low);
+      ctrl.node.add(high);
 
-      final hit = ctrl.pickTopNodeAtWorld(const ui.Offset(50, 50));
+      final hit = ctrl.node.hitTest(const ui.Offset(50, 50));
       expect(hit, isNotNull);
-      expect(ctrl.lookupNode(hit!)?.zIndex, 5);
+      expect(ctrl.node.lookup(hit!)?.zIndex, 5);
     });
 
-    test('applyMarquee replaces and additive union', () {
-      const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
-      final ctrl = InfiniteCanvasController(worldBounds: world);
+    test('selection marquee replaces and additive union', () {
+      final ctrl = InfiniteCanvasController();
+      ctrl.setWorldBounds(const ui.Rect.fromLTWH(-5000, -5000, 10000, 10000));
       final a = VisualRectTestNode.fromAxisAlignedRect(
         const ui.Rect.fromLTWH(0, 0, 10, 10),
         zIndex: 1,
@@ -108,15 +108,19 @@ void main() {
         const ui.Rect.fromLTWH(20, 0, 10, 10),
         zIndex: 3,
       );
-      final idA = ctrl.addNode(a);
-      final idB = ctrl.addNode(b);
+      final idA = ctrl.node.add(a);
+      final idB = ctrl.node.add(b);
 
-      ctrl.applyMarquee(ui.Rect.fromLTWH(-1, -1, 15, 15), additive: false);
-      expect(ctrl.selectedQuadIds, {idA});
+      ctrl.selection.beginMarquee(const ui.Offset(-1, -1));
+      ctrl.selection.updateMarquee(const ui.Offset(14, 14));
+      ctrl.selection.endMarquee(additive: false);
+      expect(ctrl.selection.ids, {idA});
 
-      ctrl.applyMarquee(ui.Rect.fromLTWH(15, -1, 15, 15), additive: true);
-      expect(ctrl.selectedQuadIds, {idA, idB});
-      expect(ctrl.primaryQuadId, idB);
+      ctrl.selection.beginMarquee(const ui.Offset(15, -1));
+      ctrl.selection.updateMarquee(const ui.Offset(30, 14));
+      ctrl.selection.endMarquee(additive: true);
+      expect(ctrl.selection.ids, {idA, idB});
+      expect(ctrl.selection.primaryId, idB);
     });
 
     test('remapRectInsideUnion maps fractions', () {
@@ -131,27 +135,27 @@ void main() {
     });
 
     test('selectedUnionBounds unions all selected node bounds', () {
-      const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
-      final ctrl = InfiniteCanvasController(worldBounds: world);
+      final ctrl = InfiniteCanvasController();
+      ctrl.setWorldBounds(const ui.Rect.fromLTWH(-5000, -5000, 10000, 10000));
       final a = VisualRectTestNode.fromAxisAlignedRect(
         const ui.Rect.fromLTWH(0, 0, 10, 10),
       );
       final b = VisualRectTestNode.fromAxisAlignedRect(
         const ui.Rect.fromLTWH(20, 5, 10, 10),
       );
-      final idA = ctrl.addNode(a);
-      final idB = ctrl.addNode(b);
-      ctrl.setSelection({idA, idB}, primary: idB);
+      final idA = ctrl.node.add(a);
+      final idB = ctrl.node.add(b);
+      ctrl.selection.setIds({idA, idB}, primary: idB);
       expect(
-        ctrl.selectedUnionBounds,
+        ctrl.selection.unionBounds,
         ui.Rect.fromLTRB(0, 0, 30, 15),
       );
     });
 
-    test('primary down replaces selection with top z-index node', () {
+    test('primary click selects top z-index node at point', () {
       TestWidgetsFlutterBinding.ensureInitialized();
-      const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
-      final ctrl = InfiniteCanvasController(worldBounds: world);
+      final ctrl = InfiniteCanvasController();
+      ctrl.setWorldBounds(const ui.Rect.fromLTWH(-5000, -5000, 10000, 10000));
       ctrl.camera.changeSize(const ui.Size(400, 300));
       ctrl.camera.moveTo(ui.Offset.zero);
       ctrl.camera.setZoomDouble(1.0);
@@ -170,26 +174,17 @@ void main() {
         zIndex: 10,
         color: const ui.Color(0xFF000001),
       );
-      final idLow = ctrl.addNode(low);
-      final idHigh = ctrl.addNode(high);
-      ctrl.setSelection({idLow}, primary: idLow);
+      final idLow = ctrl.node.add(low);
+      final idHigh = ctrl.node.add(high);
+      ctrl.selection.setIds({idLow}, primary: idLow);
 
-      final h = DefaultInfiniteCanvasGestureHandler(
-        config: const InfiniteCanvasGestureConfig(enableSelection: true),
-      );
       const worldPt = ui.Offset(50, 50);
-      final local = ctrl.camera.globalToLocal(worldPt.dx, worldPt.dy);
-      h.handlePointerEvent(
-        PointerDownEvent(
-          pointer: 1,
-          position: local,
-          buttons: 1,
-        ),
-        ctrl,
-      );
+      final hit = ctrl.node.hitTest(worldPt);
+      expect(hit, idHigh);
+      ctrl.selection.selectSingle(hit!);
 
-      expect(ctrl.primaryQuadId, idHigh);
-      expect(ctrl.selectedQuadIds, {idHigh});
+      expect(ctrl.selection.primaryId, idHigh);
+      expect(ctrl.selection.ids, {idHigh});
     });
 
     test('SelectionHandles.hitTest hits corner knob', () {
@@ -223,8 +218,8 @@ void main() {
 
   group('InfiniteCanvasController + QuadTree', () {
     test('queryVisible returns nodes in inflated camera bound', () {
-      const world = ui.Rect.fromLTWH(-5000, -5000, 10000, 10000);
-      final ctrl = InfiniteCanvasController(worldBounds: world);
+      final ctrl = InfiniteCanvasController();
+      ctrl.setWorldBounds(const ui.Rect.fromLTWH(-5000, -5000, 10000, 10000));
 
       ctrl.camera.changeSize(const ui.Size(1000, 1000));
       ctrl.camera.moveTo(ui.Offset.zero);
@@ -237,8 +232,8 @@ void main() {
         const ui.Rect.fromLTWH(4000, 4000, 10, 10),
       );
 
-      ctrl.addNode(inside);
-      ctrl.addNode(far);
+      ctrl.node.add(inside);
+      ctrl.node.add(far);
 
       final visible = ctrl.queryVisible(inflate: 0);
       expect(visible.length, 1);
@@ -247,12 +242,11 @@ void main() {
   });
 
   group('InfiniteCanvasRepainter input', () {
-    test('onPointerEvent forwards to gestureHandler', () {
-      const world = ui.Rect.fromLTWH(-1000, -1000, 2000, 2000);
-      final ctrl = InfiniteCanvasController(worldBounds: world);
+    test('onPointerEvent callback receives pointer events', () {
+      final ctrl = InfiniteCanvasController();
       final repainter = InfiniteCanvasRepainter(ctrl);
-      final recorder = _RecordingGestureHandler();
-      repainter.gestureHandler = recorder;
+      final recorder = <PointerEvent>[];
+      repainter.pointerCallback = recorder.add;
 
       final down = PointerDownEvent(
         pointer: 1,
@@ -260,60 +254,63 @@ void main() {
       );
       repainter.onPointerEvent(down);
 
-      expect(recorder.pointerEvents, hasLength(1));
-      expect(recorder.pointerEvents.first, same(down));
-    });
-
-    test('Default handler keyboard shortcuts when disabled', () {
-      const world = ui.Rect.fromLTWH(-1000, -1000, 2000, 2000);
-      final ctrl = InfiniteCanvasController(worldBounds: world);
-      final h = DefaultInfiniteCanvasGestureHandler(
-        config: const InfiniteCanvasGestureConfig(
-          enableKeyboardShortcuts: false,
-        ),
-      );
-      final ev = KeyDownEvent(
-        physicalKey: PhysicalKeyboardKey.arrowLeft,
-        logicalKey: LogicalKeyboardKey.arrowLeft,
-        timeStamp: Duration.zero,
-        deviceType: ui.KeyEventDeviceType.keyboard,
-      );
-      expect(h.handleKeyEvent(ev, ctrl), isFalse);
-    });
-
-    test('Default handler keyboard pan when enabled', () {
-      const world = ui.Rect.fromLTWH(-1000, -1000, 2000, 2000);
-      final ctrl = InfiniteCanvasController(worldBounds: world);
-      ctrl.camera.moveTo(const ui.Offset(100, 100));
-      final h = DefaultInfiniteCanvasGestureHandler(
-        config: const InfiniteCanvasGestureConfig(
-          enableKeyboardShortcuts: true,
-          enablePan: true,
-          keyboardPanStepWorld: 10,
-        ),
-      );
-      final ev = KeyDownEvent(
-        physicalKey: PhysicalKeyboardKey.arrowLeft,
-        logicalKey: LogicalKeyboardKey.arrowLeft,
-        timeStamp: Duration.zero,
-        deviceType: ui.KeyEventDeviceType.keyboard,
-      );
-      expect(h.handleKeyEvent(ev, ctrl), isTrue);
-      expect(ctrl.camera.position.dx, 90);
+      expect(recorder, hasLength(1));
+      expect(recorder.first, same(down));
     });
   });
-}
 
-final class _RecordingGestureHandler extends InfiniteCanvasGestureHandler {
-  _RecordingGestureHandler();
+  group('API smoke (namespaces)', () {
+    test('node.translate, applyStyle, marquee, transform drag, text editing', () {
+      TestWidgetsFlutterBinding.ensureInitialized();
 
-  final List<PointerEvent> pointerEvents = [];
+      final ctrl = InfiniteCanvasController();
+      ctrl.setWorldBounds(const ui.Rect.fromLTWH(-5000, -5000, 10000, 10000));
+      ctrl.camera.changeSize(const ui.Size(800, 600));
+      ctrl.camera.moveTo(ui.Offset.zero);
+      ctrl.camera.setZoomDouble(1.0);
 
-  @override
-  void handlePointerEvent(
-    PointerEvent event,
-    InfiniteCanvasController controller,
-  ) {
-    pointerEvents.add(event);
-  }
+      final rect = VisualRectTestNode.fromAxisAlignedRect(
+        const ui.Rect.fromLTWH(100, 100, 80, 60),
+      );
+      rect.style = const TintNodeStyle(ui.Color(0xFF111111));
+      final rid = ctrl.node.add(rect);
+      ctrl.selection.setIds({rid}, primary: rid);
+
+      ctrl.node.translate({rid}, const ui.Offset(3, -2));
+      expect(ctrl.node.lookup(rid)!.bounds.left, 103);
+      expect(ctrl.node.lookup(rid)!.bounds.top, 98);
+
+      final nApplied = ctrl.node.applyStyle<TintNodeStyle>(
+        (s) => s.withTint(const ui.Color(0xFF222222)),
+      );
+      expect(nApplied, 1);
+      expect((ctrl.node.lookup(rid)!.style as TintNodeStyle).tint, const ui.Color(0xFF222222));
+
+      ctrl.selection.beginMarquee(const ui.Offset(90, 90));
+      ctrl.selection.updateMarquee(const ui.Offset(200, 200));
+      ctrl.selection.endMarquee(additive: false);
+      expect(ctrl.selection.ids, {rid});
+
+      final brWorld = ctrl.selection.unionBounds!.bottomRight;
+      ctrl.transform.beginHandleDrag(
+        SelectionHandleKind.bottomRight,
+        pointerWorld: brWorld,
+      );
+      ctrl.transform.updateHandleDrag(
+        pointerWorld: brWorld + const ui.Offset(20, 15),
+      );
+      ctrl.transform.end();
+      expect(ctrl.node.lookup(rid)!.bounds.width >= 80, isTrue);
+
+      final textNode = SmokeTextNode();
+      final tid = ctrl.node.add(textNode);
+      ctrl.text.beginEditing(tid);
+      expect(ctrl.text.editingQuadId, tid);
+      ctrl.text.toggleBold();
+      expect(textNode.boldToggleCount, 1);
+      ctrl.text.stopEditing(commit: true);
+
+      ctrl.dispose();
+    });
+  });
 }

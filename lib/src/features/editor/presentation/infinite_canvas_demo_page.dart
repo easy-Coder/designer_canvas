@@ -9,6 +9,8 @@ import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/rect_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/text_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/tool_style_defaults.dart';
+import 'package:designer_canvas/src/features/editor/presentation/controller/canvas_input_config.dart';
+import 'package:designer_canvas/src/features/editor/presentation/controller/canvas_select_gestures.dart';
 import 'package:designer_canvas/src/features/editor/presentation/controller/designer_gesture_handler.dart';
 import 'package:designer_canvas/src/features/editor/presentation/controller/document_reducer.dart';
 import 'package:designer_canvas/src/features/editor/presentation/controller/pending_image_placement.dart';
@@ -25,18 +27,15 @@ class InfiniteCanvasDemoPage extends StatefulWidget {
   State<InfiniteCanvasDemoPage> createState() => _InfiniteCanvasDemoPageState();
 }
 
-class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
-    with SingleTickerProviderStateMixin {
+class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
   late final InfiniteCanvasController _controller;
   late final ValueNotifier<CanvasTool> _tool;
-  late final InfiniteCanvasGestureConfig _gestureConfig;
-  late final DefaultInfiniteCanvasGestureHandler _defaultHandler;
+  late final DesignerCanvasInputConfig _gestureConfig;
+  late final CanvasSelectGestures _selectGestures;
   late final DesignerGestureHandler _designerHandler;
   late final ValueNotifier<ToolStyleDefaults> _toolDefaults;
   late final ValueNotifier<FrameSizePreset> _frameSizePreset;
   late final FocusNode _canvasFocusNode;
-  late final AnimationController _cursorBlinkController;
-  late final ValueNotifier<bool> _cursorVisible;
   late final CanvasDocumentState _documentState;
   late final NodeCodec _nodeCodec;
   late final RuntimeIndexBridge _runtimeBridge;
@@ -47,14 +46,14 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
   @override
   void initState() {
     super.initState();
-    const world = ui.Rect.fromLTWH(-10000, -10000, 20000, 20000);
     _controller = InfiniteCanvasController(
-      worldBounds: world,
+      camera: Camera(
+        viewportSize: const ui.Size(800, 600),
+        position: ui.Offset.zero,
+        zoomDouble: 0.35,
+      ),
       onNodeDoubleClick: _onNodeDoubleClick,
     );
-    _controller.camera.changeSize(const ui.Size(800, 600));
-    _controller.camera.moveTo(ui.Offset.zero);
-    _controller.camera.setZoomDouble(0.35);
     _toolDefaults = ValueNotifier(const ToolStyleDefaults());
     _frameSizePreset = ValueNotifier(FrameSizePreset.paper);
     _pendingImagePlacement = ValueNotifier(null);
@@ -73,26 +72,6 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
       runtimeBridge: _runtimeBridge,
     );
     _canvasFocusNode = FocusNode(debugLabel: 'canvas-focus');
-    _cursorVisible = ValueNotifier(true);
-    _cursorBlinkController =
-        AnimationController(
-            vsync: this,
-            duration: const Duration(milliseconds: 550),
-          )
-          ..addStatusListener((status) {
-            if (status == AnimationStatus.completed) {
-              _cursorBlinkController.reverse();
-            } else if (status == AnimationStatus.dismissed) {
-              _cursorBlinkController.forward();
-            }
-          })
-          ..addListener(() {
-            final nextVisible = _cursorBlinkController.value > 0.5;
-            if (_cursorVisible.value != nextVisible) {
-              _cursorVisible.value = nextVisible;
-              _designerHandler.updateEditingCaretVisibility(_controller);
-            }
-          });
     final seedNodes = <RectNode>[
       RectNode(
         center: ui.Offset.zero,
@@ -121,13 +100,11 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
     _lastUsedByGroup = ValueNotifier({
       for (final g in kEditorToolGroups) g.id: g.defaultTool,
     });
-    _gestureConfig = const InfiniteCanvasGestureConfig(
+    _gestureConfig = const DesignerCanvasInputConfig(
       enableSelection: true,
       enableKeyboardShortcuts: false,
     );
-    _defaultHandler = DefaultInfiniteCanvasGestureHandler(
-      config: _gestureConfig,
-    );
+    _selectGestures = CanvasSelectGestures(config: _gestureConfig);
     _designerHandler = DesignerGestureHandler(
       tool: _tool,
       toolDefaults: _toolDefaults,
@@ -135,22 +112,10 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
       documentState: _documentState,
       runtimeBridge: _runtimeBridge,
       documentReducer: _documentReducer,
-      delegate: _defaultHandler,
+      selectGestures: _selectGestures,
       gestureConfig: _gestureConfig,
       canvasFocusNode: _canvasFocusNode,
       onToolActivated: _setToolbarTool,
-      startCursorBlink: () {
-        _cursorVisible.value = true;
-        _cursorBlinkController
-          ..stop()
-          ..value = 1
-          ..reverse();
-      },
-      stopCursorBlink: () {
-        _cursorBlinkController.stop();
-        _cursorVisible.value = false;
-      },
-      isCursorVisible: () => _cursorVisible.value,
       pendingImagePlacement: _pendingImagePlacement,
     );
     _canvasFocusNode.addListener(() {
@@ -226,8 +191,6 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
   @override
   void dispose() {
     _designerHandler.dispose();
-    _cursorBlinkController.dispose();
-    _cursorVisible.dispose();
     _canvasFocusNode.dispose();
     _tool.dispose();
     _pendingImagePlacement.dispose();
@@ -248,7 +211,6 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
           tool: _tool,
           toolDefaults: _toolDefaults,
           frameSizePreset: _frameSizePreset,
-          gestureConfig: _gestureConfig,
           gestureHandler: _designerHandler,
           canvasFocusNode: _canvasFocusNode,
           documentState: _documentState,

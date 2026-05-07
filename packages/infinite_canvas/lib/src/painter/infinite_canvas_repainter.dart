@@ -2,40 +2,28 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:repaint/repaint.dart';
 
 import '../camera/camera.dart';
 import '../controller/infinite_canvas_controller.dart';
-import '../gesture/infinite_canvas_gesture_handler.dart';
 import '../node/canvas_paint_context.dart';
 import '../selection/selection_handles.dart';
 
 /// [RePainter] for [InfiniteCanvasController] scene graph.
 ///
-/// Pointers: [RePaintBox] calls [onPointerEvent], which forwards to
-/// [gestureHandler.handlePointerEvent].
-///
-/// Keyboard: [mount] registers [HardwareKeyboard.instance.addHandler] and
-/// [unmount] removes it; events go to [gestureHandler.handleKeyEvent].
+/// Pointer delivery is app-controlled: set [pointerCallback] from [InfiniteCanvasView].
+/// Keyboard handling is app-controlled (e.g. wrap the view in [Focus]).
 class InfiniteCanvasRepainter implements RePainter {
   InfiniteCanvasRepainter(this.controller);
 
   final InfiniteCanvasController controller;
 
-  /// Updated by [InfiniteCanvasView] each build before [RePaint] paints.
-  InfiniteCanvasGestureHandler gestureHandler =
-      const NoopInfiniteCanvasGestureHandler();
+  /// Called for each pointer event from the [RePaint] box when non-null.
+  void Function(PointerEvent event)? pointerCallback;
 
   RePaintBox? _box;
   bool _dirty = true;
-
-  late final KeyEventCallback _hardwareKeyboardHandler = _onHardwareKey;
-
-  bool _onHardwareKey(KeyEvent event) {
-    return gestureHandler.handleKeyEvent(event, controller);
-  }
 
   void _onController() {
     _dirty = true;
@@ -46,12 +34,10 @@ class InfiniteCanvasRepainter implements RePainter {
   void mount(RePaintBox box, PipelineOwner owner) {
     _box = box;
     controller.addListener(_onController);
-    HardwareKeyboard.instance.addHandler(_hardwareKeyboardHandler);
   }
 
   @override
   void unmount() {
-    HardwareKeyboard.instance.removeHandler(_hardwareKeyboardHandler);
     controller.removeListener(_onController);
     _box = null;
   }
@@ -67,7 +53,7 @@ class InfiniteCanvasRepainter implements RePainter {
 
   @override
   void onPointerEvent(PointerEvent event) {
-    gestureHandler.handlePointerEvent(event, controller);
+    pointerCallback?.call(event);
   }
 
   @override
@@ -102,7 +88,7 @@ class InfiniteCanvasRepainter implements RePainter {
 
   void _paintSelectionOverlay(ui.Canvas canvas, Camera camera) {
     final zoom = camera.zoomDouble;
-    final activeEditingId = gestureHandler.activeEditingQuadId;
+    final activeEditingId = controller.text.editingQuadId;
 
     const outlineWorld = 1.0;
     const dashWorld = 8.0;
@@ -200,8 +186,6 @@ class InfiniteCanvasRepainter implements RePainter {
     }
   }
 
-  /// Dashed stroke along [rect] in viewport space; dash/gap lengths scale with
-  /// [zoom] from world-space [dashWorld] / [gapWorld].
   static void _paintDashedRect(
     ui.Canvas canvas,
     ui.Rect rect,

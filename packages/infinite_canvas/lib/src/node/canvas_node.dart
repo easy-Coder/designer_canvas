@@ -12,8 +12,7 @@ import 'node_style.dart';
 /// Override [draw] to paint; you may call `super.draw` first for shared base
 /// behavior (default is a no-op).
 ///
-/// **Interactive transforms** (used by [DefaultInfiniteCanvasGestureHandler]
-/// when [InfiniteCanvasGestureConfig.enableNodeTransform] is true): override
+/// **Interactive transforms** (used by [TransformOps] / app input routers): override
 /// [translateWorld], [rotateWorldAround], and [remapBoundsInUnion] to mutate
 /// geometry; call [InfiniteCanvasController.relayoutNodes] after changes.
 /// Defaults are no-ops so static or non-resizable nodes need no code.
