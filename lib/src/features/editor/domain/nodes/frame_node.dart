@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:infinite_canvas/infinite_canvas.dart';
 
+import 'package:designer_canvas/src/features/editor/domain/fill_paint.dart';
 import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
 import 'package:designer_canvas/src/features/editor/domain/style_painter.dart';
 
@@ -70,12 +71,20 @@ class FrameNode extends CanvasNode with RoundedRectCanvasMixin {
       canvas.drawRect(localRect, createShadowPaint(shadow));
       canvas.restore();
     }
-    canvas.drawRect(
-      localRect,
-      ui.Paint()
-        ..color = s.fill.color
-        ..style = ui.PaintingStyle.fill,
-    );
+    if (s.fill.kind == FillKind.image) {
+      final img = imageForFillPath(s.fill.imagePath);
+      paintImageFill(
+        canvas: canvas,
+        fill: s.fill,
+        targetRect: localRect,
+        image: img,
+      );
+    } else {
+      canvas.drawRect(
+        localRect,
+        createFillPaint(fill: s.fill, shaderRect: localRect),
+      );
+    }
     final stroke = s.stroke;
     if (stroke != null) {
       final path = ui.Path()..addRect(localRect);

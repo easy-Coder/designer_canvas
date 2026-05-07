@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:infinite_canvas/infinite_canvas.dart';
 
+import 'package:designer_canvas/src/features/editor/domain/fill_paint.dart';
 import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
 import 'package:designer_canvas/src/features/editor/domain/style_painter.dart';
 
@@ -36,10 +37,12 @@ class CircleNode extends CanvasNode with RoundedRectCanvasMixin {
     super.style = value;
   }
 
-  ui.Color get color => circleStyle.fill.color;
+  ui.Color get color => circleStyle.fill.swatchColor;
 
   set color(ui.Color value) {
-    style = circleStyle.copyWith(fill: circleStyle.fill.copyWith(color: value));
+    style = circleStyle.copyWith(
+      fill: circleStyle.fill.copyWithSolidColor(value),
+    );
   }
 
   /// Updates center and radius from world space (used for live placement drag).
@@ -72,10 +75,25 @@ class CircleNode extends CanvasNode with RoundedRectCanvasMixin {
       canvas.drawCircle(pivot, r, createShadowPaint(shadow));
       canvas.restore();
     }
-    final fill = ui.Paint()
-      ..color = s.fill.color
-      ..style = ui.PaintingStyle.fill;
-    canvas.drawCircle(pivot, r, fill);
+    final oval = ui.Rect.fromCircle(center: pivot, radius: r);
+    if (s.fill.kind == FillKind.image) {
+      final img = imageForFillPath(s.fill.imagePath);
+      canvas.save();
+      canvas.clipPath(ui.Path()..addOval(oval));
+      paintImageFill(
+        canvas: canvas,
+        fill: s.fill,
+        targetRect: oval,
+        image: img,
+      );
+      canvas.restore();
+    } else {
+      canvas.drawCircle(
+        pivot,
+        r,
+        createFillPaint(fill: s.fill, shaderRect: oval),
+      );
+    }
     final stroke = s.stroke;
     if (stroke != null) {
       final path = ui.Path()

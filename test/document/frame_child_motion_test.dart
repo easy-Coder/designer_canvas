@@ -150,5 +150,67 @@ void main() {
       expect((childNode.transformPivot.dx - 20).abs() < 1e-6, isTrue);
       expect((childNode.transformPivot.dy - 20).abs() < 1e-6, isTrue);
     });
+
+    test('does not snap back child when frame did not move', () {
+      final frameQuadId = controller.addNode(
+        FrameNode(
+          center: const ui.Offset(100, 100),
+          width: 200,
+          height: 200,
+          style: const FrameNodeStyle(),
+        ),
+      );
+      final childQuadId = controller.addNode(
+        RectNode(
+          center: const ui.Offset(120, 130),
+          width: 50,
+          height: 40,
+          style: const RectNodeStyle(),
+        ),
+      );
+
+      final frameId = bridge.promoteRuntimeNodeAsEntity(
+        frameQuadId,
+        nodeId: 'frame',
+      );
+      final childId = bridge.promoteRuntimeNodeAsEntity(
+        childQuadId,
+        nodeId: 'child',
+      );
+      documentState.upsertNode(
+        documentState
+            .nodeById(childId)!
+            .copyWith(
+              parentId: frameId,
+              containment: const NodeContainmentData(
+                localPivotX: 20,
+                localPivotY: 30,
+              ),
+            ),
+      );
+
+      final snapshots = <String, ui.Offset>{};
+      propagateFrameChildMotion(
+        controller: controller,
+        documentState: documentState,
+        runtimeBridge: bridge,
+        framePivotSnapshotByNodeId: snapshots,
+      );
+
+      final childNode = controller.lookupNode(childQuadId)!;
+      childNode.translateWorld(const ui.Offset(25, -15));
+      controller.updateNode(childQuadId);
+
+      propagateFrameChildMotion(
+        controller: controller,
+        documentState: documentState,
+        runtimeBridge: bridge,
+        framePivotSnapshotByNodeId: snapshots,
+      );
+
+      final movedChild = controller.lookupNode(childQuadId)!;
+      expect((movedChild.transformPivot.dx - 145).abs() < 1e-6, isTrue);
+      expect((movedChild.transformPivot.dy - 115).abs() < 1e-6, isTrue);
+    });
   });
 }

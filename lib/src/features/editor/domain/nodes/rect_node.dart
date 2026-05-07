@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:infinite_canvas/infinite_canvas.dart';
 
+import 'package:designer_canvas/src/features/editor/domain/fill_paint.dart';
 import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
 import 'package:designer_canvas/src/features/editor/domain/style_painter.dart';
 
@@ -54,10 +55,12 @@ class RectNode extends CanvasNode with RoundedRectCanvasMixin {
     super.style = value;
   }
 
-  ui.Color get color => rectStyle.fill.color;
+  ui.Color get color => rectStyle.fill.swatchColor;
 
   set color(ui.Color value) {
-    style = rectStyle.copyWith(fill: rectStyle.fill.copyWith(color: value));
+    style = rectStyle.copyWith(
+      fill: rectStyle.fill.copyWithSolidColor(value),
+    );
   }
 
   double get cornerRadiusWorld => rectStyle.cornerRadius;
@@ -103,10 +106,24 @@ class RectNode extends CanvasNode with RoundedRectCanvasMixin {
       canvas.drawRRect(local, createShadowPaint(shadow));
       canvas.restore();
     }
-    final fill = ui.Paint()
-      ..color = s.fill.color
-      ..style = ui.PaintingStyle.fill;
-    canvas.drawRRect(local, fill);
+    final outer = local.outerRect;
+    if (s.fill.kind == FillKind.image) {
+      final img = imageForFillPath(s.fill.imagePath);
+      canvas.save();
+      canvas.clipRRect(local);
+      paintImageFill(
+        canvas: canvas,
+        fill: s.fill,
+        targetRect: outer,
+        image: img,
+      );
+      canvas.restore();
+    } else {
+      canvas.drawRRect(
+        local,
+        createFillPaint(fill: s.fill, shaderRect: outer),
+      );
+    }
     final stroke = s.stroke;
     if (stroke != null) {
       final path = ui.Path()..addRRect(local);

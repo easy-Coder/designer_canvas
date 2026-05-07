@@ -11,7 +11,10 @@ import 'package:designer_canvas/src/features/editor/domain/nodes/text_node.dart'
 import 'package:designer_canvas/src/features/editor/domain/tool_style_defaults.dart';
 import 'package:designer_canvas/src/features/editor/presentation/controller/designer_gesture_handler.dart';
 import 'package:designer_canvas/src/features/editor/presentation/controller/document_reducer.dart';
+import 'package:designer_canvas/src/features/editor/presentation/controller/pending_image_placement.dart';
 import 'package:designer_canvas/src/features/editor/presentation/designer_shell.dart';
+import 'package:designer_canvas/src/features/editor/presentation/editor_toolbar_metadata.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
@@ -38,6 +41,8 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
   late final NodeCodec _nodeCodec;
   late final RuntimeIndexBridge _runtimeBridge;
   late final DocumentReducer _documentReducer;
+  late final ValueNotifier<Map<EditorToolGroupId, CanvasTool>> _lastUsedByGroup;
+  late final ValueNotifier<PendingImagePlacement?> _pendingImagePlacement;
 
   @override
   void initState() {
@@ -52,6 +57,7 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
     _controller.camera.setZoomDouble(0.35);
     _toolDefaults = ValueNotifier(const ToolStyleDefaults());
     _frameSizePreset = ValueNotifier(FrameSizePreset.paper);
+    _pendingImagePlacement = ValueNotifier(null);
     _nodeCodec = NodeCodec();
     _documentState = CanvasDocumentState(
       docId: 'local-doc',
@@ -112,6 +118,9 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
     _runtimeBridge.rebuildFromDocument();
 
     _tool = ValueNotifier(CanvasTool.select);
+    _lastUsedByGroup = ValueNotifier({
+      for (final g in kEditorToolGroups) g.id: g.defaultTool,
+    });
     _gestureConfig = const InfiniteCanvasGestureConfig(
       enableSelection: true,
       enableKeyboardShortcuts: false,
@@ -129,6 +138,7 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
       delegate: _defaultHandler,
       gestureConfig: _gestureConfig,
       canvasFocusNode: _canvasFocusNode,
+      onToolActivated: _setToolbarTool,
       startCursorBlink: () {
         _cursorVisible.value = true;
         _cursorBlinkController
@@ -141,6 +151,7 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
         _cursorVisible.value = false;
       },
       isCursorVisible: () => _cursorVisible.value,
+      pendingImagePlacement: _pendingImagePlacement,
     );
     _canvasFocusNode.addListener(() {
       _designerHandler.handleCanvasFocusChanged(
@@ -148,6 +159,62 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
         _controller,
       );
     });
+  }
+
+  Future<PendingImagePlacement?> _pickImagePlacement() async {
+    debugPrint('[image-tool] Image tool selected, opening file picker...');
+    const XTypeGroup typeGroup = XTypeGroup(
+      label: 'images',
+      extensions: <String>['jpg', 'png'],
+      uniformTypeIdentifiers: <String>['public.jpeg', 'public.png'],
+    );
+    final file = await openFile(acceptedTypeGroups: [typeGroup]);
+    if (file == null) return null;
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) return null;
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final image = frame.image;
+    return PendingImagePlacement(
+      fileName: file.name,
+      filePath: file.path,
+      bytes: bytes,
+      intrinsicWidth: image.width.toDouble(),
+      intrinsicHeight: image.height.toDouble(),
+    );
+  }
+
+  void _setToolbarTool(CanvasTool t) async {
+    if (t == CanvasTool.image) {
+      PendingImagePlacement? selected;
+      try {
+        selected = await _pickImagePlacement();
+      } catch (_) {
+        debugPrint('[image-tool] File picker threw an exception.');
+        selected = null;
+      }
+      if (!mounted) {
+        debugPrint('[image-tool] Widget unmounted before picker completed.');
+        return;
+      }
+      if (selected == null) {
+        debugPrint('[image-tool] No image selected (cancelled or failed).');
+        return;
+      }
+      debugPrint(
+        '[image-tool] Selected ${selected.fileName} '
+        '(${selected.intrinsicWidth}x${selected.intrinsicHeight}).',
+      );
+      _pendingImagePlacement.value = selected;
+    }
+    debugPrint('[image-tool] Activating tool: ${t.name}');
+    _tool.value = t;
+    final gid = groupIdForTool(t);
+    if (gid != null) {
+      final m = Map<EditorToolGroupId, CanvasTool>.from(_lastUsedByGroup.value);
+      m[gid] = t;
+      _lastUsedByGroup.value = m;
+    }
   }
 
   void _onNodeDoubleClick(int quadId, CanvasNode node) {
@@ -163,6 +230,8 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
     _cursorVisible.dispose();
     _canvasFocusNode.dispose();
     _tool.dispose();
+    _pendingImagePlacement.dispose();
+    _lastUsedByGroup.dispose();
     _toolDefaults.dispose();
     _frameSizePreset.dispose();
     _documentState.dispose();
@@ -182,6 +251,10 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage>
           gestureConfig: _gestureConfig,
           gestureHandler: _designerHandler,
           canvasFocusNode: _canvasFocusNode,
+          documentState: _documentState,
+          runtimeBridge: _runtimeBridge,
+          lastUsedByGroup: _lastUsedByGroup,
+          onToolbarToolSelected: _setToolbarTool,
         ),
       ),
     );
