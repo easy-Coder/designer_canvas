@@ -7,8 +7,10 @@ import 'package:designer_canvas/src/features/editor/data/canvas_document_state.d
 import 'package:designer_canvas/src/features/editor/data/node_codec.dart';
 import 'package:designer_canvas/src/features/editor/data/runtime_index_bridge.dart';
 import 'package:designer_canvas/src/features/editor/domain/canvas_tool.dart';
+import 'package:designer_canvas/src/features/editor/domain/frame_size_presets.dart';
 import 'package:designer_canvas/src/features/editor/domain/node_entity.dart';
 import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/frame_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/line_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/polygon_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/text_node.dart';
@@ -27,6 +29,55 @@ import 'package:designer_canvas/src/features/editor/presentation/inspector/inspe
 import 'package:designer_canvas/src/features/editor/presentation/inspector/inspector_text_section.dart';
 
 enum InspectorScope { selectedNode, toolDefaults }
+
+class _FrameSizePresetRow extends StatelessWidget {
+  const _FrameSizePresetRow({
+    required this.label,
+    required this.description,
+    required this.onTap,
+  });
+
+  final String label;
+  final String description;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFFB0B0B0),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, size: 18, color: Color(0xFF9AA0A6)),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class PropertyInspector extends StatefulWidget {
   const PropertyInspector({
@@ -67,6 +118,24 @@ class _PropertyInspectorState extends State<PropertyInspector> {
   ];
 
   InfiniteCanvasController get _c => widget.controller;
+
+  String _nextFrameName(String base) {
+    var maxN = 0;
+    for (final entity in widget.documentState.nodesById.values) {
+      if (entity is! FrameNodeEntity) continue;
+      final name = entity.name;
+      if (name == base) {
+        maxN = maxN < 1 ? 1 : maxN;
+        continue;
+      }
+      if (!name.startsWith('$base - ')) continue;
+      final tail = name.substring(base.length + 3);
+      final n = int.tryParse(tail.trim());
+      if (n != null && n > maxN) maxN = n;
+    }
+    final next = maxN + 1;
+    return '$base - $next';
+  }
 
   List<(int quadId, CanvasNode node)> _orderedSelection() {
     final ids = _c.selectedQuadIds.toList()..sort();
@@ -349,6 +418,35 @@ class _PropertyInspectorState extends State<PropertyInspector> {
                         n.label = value.trim().isEmpty ? 'Node' : value.trim();
                       });
                     },
+                  ),
+                ),
+              if (isSel && primary is FrameNode)
+                InspectorSection(
+                  title: 'Size',
+                  child: Column(
+                    children: [
+                      for (final preset in FrameSizePreset.values)
+                        _FrameSizePresetRow(
+                          label: frameSizePresetSpecs[preset]!.label,
+                          description: frameSizePresetSpecs[preset]!.description,
+                          onTap: () {
+                            _applyToSelection((n) {
+                              if (n is! FrameNode) return;
+                              final spec = frameSizePresetSpecs[preset]!;
+                              final topLeft = n.bounds.topLeft;
+                              n.setAxisAlignedWorldRect(
+                                ui.Rect.fromLTWH(
+                                  topLeft.dx,
+                                  topLeft.dy,
+                                  spec.size.width,
+                                  spec.size.height,
+                                ),
+                              );
+                              n.label = _nextFrameName(spec.label);
+                            });
+                          },
+                        ),
+                    ],
                   ),
                 ),
               if (showLayout && cx != null)

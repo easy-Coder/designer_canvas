@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:infinite_canvas/infinite_canvas.dart';
 
 import 'package:designer_canvas/src/features/editor/domain/fill_paint.dart';
+import 'package:designer_canvas/src/features/editor/domain/frame_title_layout.dart';
 import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
 import 'package:designer_canvas/src/features/editor/domain/style_painter.dart';
 
@@ -95,5 +96,12 @@ class FrameNode extends CanvasNode with RoundedRectCanvasMixin {
         zoom: context.camera.zoomDouble,
       );
     }
+
+    final title = label.trim().isEmpty ? 'Frame' : label.trim();
+    final layout = FrameTitleLayout.layoutForFrame(
+      frameViewportRect: localRect,
+      label: title,
+    );
+    canvas.drawParagraph(layout.paragraph, layout.paragraphOffset);
   }
 }

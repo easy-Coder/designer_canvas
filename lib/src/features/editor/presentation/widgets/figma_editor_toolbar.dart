@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'package:designer_canvas/src/features/editor/domain/canvas_tool.dart';
-import 'package:designer_canvas/src/features/editor/domain/frame_size_presets.dart';
 import 'package:designer_canvas/src/features/editor/presentation/editor_toolbar_metadata.dart';
 
 /// Bottom-center Figma-like grouped tool bar with dropdowns and sticky last-used.
@@ -10,13 +9,11 @@ class FigmaEditorToolbar extends StatelessWidget {
     super.key,
     required this.tool,
     required this.lastUsedByGroup,
-    required this.frameSizePreset,
     required this.onToolSelected,
   });
 
   final ValueNotifier<CanvasTool> tool;
   final ValueNotifier<Map<EditorToolGroupId, CanvasTool>> lastUsedByGroup;
-  final ValueNotifier<FrameSizePreset> frameSizePreset;
   final ValueChanged<CanvasTool> onToolSelected;
 
   static const _barBg = Color(0xFF2C2C2C);
@@ -61,50 +58,6 @@ class FigmaEditorToolbar extends StatelessWidget {
                           onPick: onToolSelected,
                           activeBlue: _activeBlue,
                           iconOn: _iconOn,
-                        ),
-                      ],
-                      if (activeTool == CanvasTool.frame) ...[
-                        const SizedBox(width: 8),
-                        ValueListenableBuilder<FrameSizePreset>(
-                          valueListenable: frameSizePreset,
-                          builder: (context, preset, _) {
-                            return Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'Size',
-                                  style: Theme.of(context).textTheme.labelSmall
-                                      ?.copyWith(color: _iconOn),
-                                ),
-                                const SizedBox(width: 6),
-                                for (final option in FrameSizePreset.values)
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 4),
-                                    child: TextButton(
-                                      style: TextButton.styleFrom(
-                                        foregroundColor: preset == option
-                                            ? _activeBlue
-                                            : _iconOn,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        minimumSize: Size.zero,
-                                        tapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                      ),
-                                      onPressed: () {
-                                        frameSizePreset.value = option;
-                                      },
-                                      child: Text(
-                                        frameSizePresetSpecs[option]!.label,
-                                        style: const TextStyle(fontSize: 11),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            );
-                          },
                         ),
                       ],
                     ],

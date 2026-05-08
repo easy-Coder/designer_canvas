@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:infinite_canvas/infinite_canvas.dart';
 
 import 'package:designer_canvas/src/features/editor/domain/canvas_tool.dart';
+import 'package:designer_canvas/src/features/editor/domain/frame_title_layout.dart';
 import 'package:designer_canvas/src/features/editor/domain/frame_size_presets.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/arrow_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/circle_node.dart';
@@ -89,6 +90,31 @@ class DesignerShell extends StatelessWidget {
                   },
                 ),
               ),
+              IgnorePointer(
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _ActiveFrameTitlePainter(controller),
+                    size: Size.infinite,
+                  ),
+                ),
+              ),
+              ValueListenableBuilder(
+                valueListenable: gestureHandler.frameTitleEditor,
+                builder: (context, state, _) {
+                  if (state == null) return const SizedBox.shrink();
+                  return Positioned(
+                    left: state.viewportRect.left,
+                    top: state.viewportRect.top,
+                    width: state.viewportRect.width,
+                    height: state.viewportRect.height,
+                    child: _FrameTitleEditorOverlay(
+                      controller: controller,
+                      gestureHandler: gestureHandler,
+                      state: state,
+                    ),
+                  );
+                },
+              ),
               Align(
                 alignment: Alignment.bottomCenter,
                 child: Padding(
@@ -96,7 +122,6 @@ class DesignerShell extends StatelessWidget {
                   child: FigmaEditorToolbar(
                     tool: tool,
                     lastUsedByGroup: lastUsedByGroup,
-                    frameSizePreset: frameSizePreset,
                     onToolSelected: onToolbarToolSelected,
                   ),
                 ),
@@ -151,6 +176,155 @@ class _LayersPanel extends StatefulWidget {
 
   @override
   State<_LayersPanel> createState() => _LayersPanelState();
+}
+
+class _ActiveFrameTitlePainter extends CustomPainter {
+  _ActiveFrameTitlePainter(this.controller) : super(repaint: controller);
+
+  final InfiniteCanvasController controller;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final primaryId = controller.primaryQuadId;
+    if (primaryId == null) return;
+    final node = controller.lookupNode(primaryId);
+    if (node is! FrameNode) return;
+
+    final cam = controller.camera;
+    final vr = cam.globalToLocalRect(node.bounds);
+    final title = node.label.trim().isEmpty ? 'Frame' : node.label.trim();
+    final layout = FrameTitleLayout.layoutForFrame(
+      frameViewportRect: vr,
+      label: title,
+    );
+
+    final bgPaint = Paint()
+      ..color = const Color(0xFFE8F0FE)
+      ..style = PaintingStyle.fill;
+    final border = Paint()
+      ..color = const Color(0xFF0D99FF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+    final rr = RRect.fromRectXY(
+      layout.backgroundRect,
+      FrameTitleLayout.cornerRadius,
+      FrameTitleLayout.cornerRadius,
+    );
+    canvas.drawRRect(rr, bgPaint);
+    canvas.drawRRect(rr, border);
+    canvas.drawParagraph(layout.paragraph, layout.paragraphOffset);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ActiveFrameTitlePainter oldDelegate) {
+    return oldDelegate.controller != controller;
+  }
+}
+
+class _FrameTitleEditorOverlay extends StatefulWidget {
+  const _FrameTitleEditorOverlay({
+    required this.controller,
+    required this.gestureHandler,
+    required this.state,
+  });
+
+  final InfiniteCanvasController controller;
+  final DesignerGestureHandler gestureHandler;
+  final FrameTitleEditState state;
+
+  @override
+  State<_FrameTitleEditorOverlay> createState() => _FrameTitleEditorOverlayState();
+}
+
+class _FrameTitleEditorOverlayState extends State<_FrameTitleEditorOverlay> {
+  late final TextEditingController _text;
+  final FocusNode _focusNode = FocusNode(debugLabel: 'frame-title-editor');
+
+  @override
+  void initState() {
+    super.initState();
+    _text = TextEditingController(text: widget.state.initialText);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _commitAndClose() {
+    final next = _text.text.trim();
+    widget.gestureHandler.commitFrameTitleEdit(
+      widget.controller,
+      quadId: widget.state.quadId,
+      nextLabel: next,
+    );
+    widget.gestureHandler.closeFrameTitleEditor();
+  }
+
+  void _cancel() {
+    widget.gestureHandler.closeFrameTitleEditor();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TapRegion(
+      onTapOutside: (_) => _commitAndClose(),
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F0FE),
+            border: Border.all(color: const Color(0xFF0D99FF), width: 2),
+            borderRadius: BorderRadius.circular(FrameTitleLayout.cornerRadius),
+          ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: FrameTitleLayout.padX,
+            vertical: FrameTitleLayout.padY,
+          ),
+          alignment: Alignment.centerLeft,
+          child: Focus(
+            onKeyEvent: (_, event) {
+              if (event is! KeyDownEvent) return KeyEventResult.ignored;
+              if (event.logicalKey == LogicalKeyboardKey.escape) {
+                _cancel();
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: TextField(
+              controller: _text,
+              focusNode: _focusNode,
+              style: const TextStyle(
+                color: Color(0xFF1D1D1D),
+                fontSize: FrameTitleLayout.fontSizePx,
+                fontWeight: FontWeight.w600,
+              ),
+              strutStyle: const StrutStyle(
+                fontSize: FrameTitleLayout.fontSizePx,
+                height: 1.0,
+                leading: 0,
+                forceStrutHeight: true,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlignVertical: TextAlignVertical.top,
+              decoration: const InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+              scrollPadding: EdgeInsets.zero,
+              onSubmitted: (_) => _commitAndClose(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _LayersPanelState extends State<_LayersPanel> {

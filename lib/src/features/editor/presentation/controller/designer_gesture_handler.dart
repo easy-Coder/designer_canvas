@@ -10,6 +10,7 @@ import 'package:designer_canvas/src/features/editor/data/node_codec.dart';
 import 'package:designer_canvas/src/features/editor/data/runtime_index_bridge.dart';
 import 'package:designer_canvas/src/features/editor/domain/canvas_tool.dart';
 import 'package:designer_canvas/src/features/editor/domain/frame_size_presets.dart';
+import 'package:designer_canvas/src/features/editor/domain/frame_title_layout.dart';
 import 'package:designer_canvas/src/features/editor/domain/node_entity.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/arrow_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/circle_node.dart';
@@ -67,9 +68,17 @@ class DesignerGestureHandler {
   final ValueNotifier<PendingImagePlacement?> pendingImagePlacement;
   final void Function(CanvasTool tool)? onToolActivated;
 
+  /// When non-null, an on-canvas frame title editor is visible.
+  final ValueNotifier<FrameTitleEditState?> frameTitleEditor =
+      ValueNotifier<FrameTitleEditState?>(null);
+
   int? _textDragPointer;
   Duration? _lastTextPointerDownAt;
   ui.Offset? _lastTextPointerDownLocal;
+
+  int? _lastFrameTitleQuadId;
+  Duration? _lastFrameTitleDownAt;
+  ui.Offset? _lastFrameTitleDownLocal;
 
   // ─── Live placement state ─────────────────────────────────────────────
   int? _placePointer;
@@ -106,6 +115,30 @@ class DesignerGestureHandler {
   }
 
   void dispose() {}
+
+  void closeFrameTitleEditor() {
+    frameTitleEditor.value = null;
+  }
+
+  void commitFrameTitleEdit(
+    InfiniteCanvasController controller, {
+    required int quadId,
+    required String nextLabel,
+  }) {
+    final node = controller.lookupNode(quadId);
+    if (node is! FrameNode) return;
+    final cleaned = nextLabel.trim().isEmpty ? node.label : nextLabel.trim();
+    node.label = cleaned.trim().isEmpty ? 'Frame' : cleaned;
+    controller.invalidate();
+
+    final nodeId = renderer.nodeIdForQuadId(quadId);
+    if (nodeId == null) return;
+    final current = documentState.nodeById(nodeId);
+    if (current == null) return;
+    final next = nodeCodec.entitySnapshotFor(current, node);
+    if (identical(current, next)) return;
+    documentState.replaceEntity(next);
+  }
 
   /// Commit current text and close the editor.
   void stopEditing(
@@ -761,6 +794,9 @@ class DesignerGestureHandler {
     }
 
     if (tool.value == CanvasTool.select) {
+      if (event is PointerDownEvent) {
+        _maybeStartFrameTitleEdit(event, controller);
+      }
       // On pointer-down in select mode, snapshot the pivots of every frame
       // so we can compute their delta on the next move events.
       if (event is PointerDownEvent) {
@@ -882,4 +918,79 @@ class DesignerGestureHandler {
     }
     return false;
   }
+
+  void _maybeStartFrameTitleEdit(
+    PointerDownEvent event,
+    InfiniteCanvasController controller,
+  ) {
+    if ((event.buttons & _kPrimaryMouseButton) == 0 ||
+        (event.buttons & kMiddleMouseButton) != 0) {
+      return;
+    }
+    if (frameTitleEditor.value != null) return;
+
+    final cam = controller.camera;
+    final world = cam.localToGlobal(
+      event.localPosition.dx,
+      event.localPosition.dy,
+    );
+    // If a non-frame node is hit, do not intercept.
+    final hit = controller.node.hitTest(world);
+    if (hit != null) return;
+
+    int? frameQuadId;
+    ui.Rect? titleRect;
+
+    // Find the top-most frame title under the pointer.
+    for (final (quadId, node) in controller.orderedNodes.toList().reversed) {
+      if (node is! FrameNode) continue;
+      final frameVr = cam.globalToLocalRect(node.bounds);
+      final layout = FrameTitleLayout.layoutForFrame(
+        frameViewportRect: frameVr,
+        label: node.label.trim().isEmpty ? 'Frame' : node.label.trim(),
+      );
+      if (layout.backgroundRect.contains(event.localPosition)) {
+        frameQuadId = quadId;
+        titleRect = layout.backgroundRect;
+        break;
+      }
+    }
+
+    if (frameQuadId == null || titleRect == null) return;
+
+    final now = event.timeStamp;
+    final isRepeated = _lastFrameTitleDownAt != null &&
+        _lastFrameTitleDownLocal != null &&
+        _lastFrameTitleQuadId == frameQuadId &&
+        (now - _lastFrameTitleDownAt!) <= _kDoubleClickTimeout &&
+        (event.localPosition - _lastFrameTitleDownLocal!).distance <=
+            _kDoubleClickMaxDistance;
+
+    _lastFrameTitleDownAt = now;
+    _lastFrameTitleDownLocal = event.localPosition;
+    _lastFrameTitleQuadId = frameQuadId;
+
+    if (!isRepeated) return;
+
+    final node = controller.lookupNode(frameQuadId);
+    if (node is! FrameNode) return;
+
+    frameTitleEditor.value = FrameTitleEditState(
+      quadId: frameQuadId,
+      viewportRect: titleRect,
+      initialText: node.label,
+    );
+  }
+}
+
+class FrameTitleEditState {
+  const FrameTitleEditState({
+    required this.quadId,
+    required this.viewportRect,
+    required this.initialText,
+  });
+
+  final int quadId;
+  final ui.Rect viewportRect;
+  final String initialText;
 }
