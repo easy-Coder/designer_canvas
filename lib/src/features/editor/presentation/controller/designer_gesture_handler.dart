@@ -324,7 +324,7 @@ class DesignerGestureHandler {
           FrameNode.fromAxisAlignedRect(
             r,
             style: toolDefaults.value.frame,
-            zIndex: 0,
+            zIndex: NodeCodec.frameZIndex,
           ),
         );
       case CanvasTool.rect:

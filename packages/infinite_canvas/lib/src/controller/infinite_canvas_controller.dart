@@ -34,6 +34,8 @@ class InfiniteCanvasController extends ChangeNotifier {
   InfiniteCanvasController({
     Camera? camera,
     this.onNodeDoubleClick,
+    this.hitTestFilter,
+    this.marqueePostProcess,
   })  : _ownsCamera = camera == null,
         _worldBounds = _kDefaultWorldBounds,
         quadTree = QuadTree(
@@ -118,6 +120,22 @@ class InfiniteCanvasController extends ChangeNotifier {
   final Map<int, CanvasNode> _nodesByQuadId = {};
 
   final NodeDoubleClickCallback? onNodeDoubleClick;
+
+  /// Optional predicate to exclude nodes from pointer hit-testing.
+  ///
+  /// When provided, [pickTopNodeAtWorld] will ignore nodes for which this
+  /// returns false. This is useful for decorative nodes that should still be
+  /// selectable through other UI but not directly by clicking the canvas.
+  final bool Function(CanvasNode node)? hitTestFilter;
+
+  /// Optional hook to post-process the set of marquee-hit node ids before
+  /// applying selection.
+  ///
+  /// Called with the raw hit ids (bounds intersect the marquee rect per the
+  /// quadtree query) and the marquee world rect. Implementations may filter
+  /// or expand the set.
+  final Set<int> Function(Set<int> ids, ui.Rect marqueeWorldRect)?
+      marqueePostProcess;
 
   int? _hoveredQuadId;
 
@@ -235,12 +253,13 @@ class InfiniteCanvasController extends ChangeNotifier {
     for (final id in ids) {
       if (_nodesByQuadId.containsKey(id)) hit.add(id);
     }
+    final processed = marqueePostProcess?.call(hit, worldRect) ?? hit;
     if (additive) {
-      _selectedQuadIds.addAll(hit);
+      _selectedQuadIds.addAll(processed);
     } else {
       _selectedQuadIds
         ..clear()
-        ..addAll(hit);
+        ..addAll(processed);
     }
     _primaryQuadId =
         _selectedQuadIds.isEmpty ? null : _pickPrimaryFrom(_selectedQuadIds);
@@ -270,7 +289,10 @@ class InfiniteCanvasController extends ChangeNotifier {
     final candidates = <int>[];
     for (final id in ids) {
       final n = _nodesByQuadId[id];
-      if (n != null && n.containsWorldPoint(world)) candidates.add(id);
+      if (n == null) continue;
+      final allow = hitTestFilter?.call(n) ?? true;
+      if (!allow) continue;
+      if (n.containsWorldPoint(world)) candidates.add(id);
     }
     if (candidates.isEmpty) return null;
     candidates.sort((a, b) {

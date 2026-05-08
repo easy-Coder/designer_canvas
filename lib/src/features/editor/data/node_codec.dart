@@ -27,6 +27,9 @@ class NodeCodec {
 
   final NodeIdGenerator _idGenerator;
 
+  // Frames are decorative and always render beneath other nodes.
+  static const int frameZIndex = -1000;
+
   /// Mints a fresh document id for a brand-new node.
   NodeId newNodeId() => _idGenerator.nextId();
 
@@ -60,7 +63,7 @@ class NodeCodec {
           height: h,
           style: FrameNodeStyle.fromJson(m),
           label: entity.name,
-          zIndex: _int(m['zIndex'], 0),
+          zIndex: frameZIndex,
         );
 
       case NodeEntityType.circle:
@@ -203,7 +206,7 @@ class NodeCodec {
     required String name,
     required ui.Rect rect,
     required FrameNodeStyle style,
-    int zIndex = 0,
+    int zIndex = frameZIndex,
   }) {
     return FrameNodeEntity(
       id: id,

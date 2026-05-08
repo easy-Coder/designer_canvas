@@ -7,6 +7,7 @@ import 'package:designer_canvas/src/features/editor/domain/canvas_tool.dart';
 import 'package:designer_canvas/src/features/editor/domain/frame_size_presets.dart';
 import 'package:designer_canvas/src/features/editor/domain/node_entity.dart';
 import 'package:designer_canvas/src/features/editor/domain/node_styles.dart';
+import 'package:designer_canvas/src/features/editor/domain/nodes/frame_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/nodes/text_node.dart';
 import 'package:designer_canvas/src/features/editor/domain/tool_style_defaults.dart';
 import 'package:designer_canvas/src/features/editor/presentation/controller/canvas_input_config.dart';
@@ -53,6 +54,8 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
         maxZoom: 10.0,
       ),
       onNodeDoubleClick: _onNodeDoubleClick,
+      hitTestFilter: (node) => node is! FrameNode,
+      marqueePostProcess: (ids, worldRect) => _marqueePostProcess(ids, worldRect),
     );
     _toolDefaults = ValueNotifier(const ToolStyleDefaults());
     _frameSizePreset = ValueNotifier(FrameSizePreset.paper);
@@ -125,6 +128,49 @@ class _InfiniteCanvasDemoPageState extends State<InfiniteCanvasDemoPage> {
         _controller,
       );
     });
+  }
+
+  static bool _rectContainsRect(ui.Rect outer, ui.Rect inner) {
+    return outer.contains(inner.topLeft) &&
+        outer.contains(inner.topRight) &&
+        outer.contains(inner.bottomLeft) &&
+        outer.contains(inner.bottomRight);
+  }
+
+  Set<NodeId> _collectDescendants(NodeId frameId) {
+    final out = <NodeId>{};
+    final stack = <NodeId>[frameId];
+    while (stack.isNotEmpty) {
+      final cur = stack.removeLast();
+      for (final child in _documentState.childrenOf(cur)) {
+        if (out.add(child)) {
+          stack.add(child);
+        }
+      }
+    }
+    return out;
+  }
+
+  Set<int> _marqueePostProcess(Set<int> ids, ui.Rect worldRect) {
+    final out = <int>{};
+    for (final quadId in ids) {
+      final node = _controller.lookupNode(quadId);
+      if (node == null) continue;
+
+      if (node is FrameNode) {
+        if (!_rectContainsRect(worldRect, node.bounds)) continue;
+        out.add(quadId);
+        final frameNodeId = _renderer.nodeIdForQuadId(quadId);
+        if (frameNodeId == null) continue;
+        for (final childId in _collectDescendants(frameNodeId)) {
+          final childQuadId = _renderer.quadIdForNodeId(childId);
+          if (childQuadId != null) out.add(childQuadId);
+        }
+      } else {
+        out.add(quadId);
+      }
+    }
+    return out;
   }
 
   Future<PendingImagePlacement?> _pickImagePlacement() async {

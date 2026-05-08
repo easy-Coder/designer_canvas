@@ -145,6 +145,11 @@ class CanvasSelectGestures {
       final world = cam.localToGlobal(e.localPosition.dx, e.localPosition.dy);
 
       final hitId = controller.node.hitTest(world);
+      final union = controller.selectedUnionBounds;
+      final downOnSelection = hitId == null &&
+          controller.selectedQuadIds.isNotEmpty &&
+          union != null &&
+          cam.globalToLocalRect(union).contains(e.localPosition);
 
       if (hitId != null &&
           !controller.selectedQuadIds.contains(hitId) &&
@@ -152,7 +157,6 @@ class CanvasSelectGestures {
         controller.selectSingle(hitId);
       }
 
-      final union = controller.selectedUnionBounds;
       if (controller.selectedQuadIds.isNotEmpty && union != null) {
         final vr = cam.globalToLocalRect(union);
         final handle = SelectionHandles.hitTest(
@@ -178,8 +182,8 @@ class CanvasSelectGestures {
 
       _primaryPointer = e.pointer;
       _primaryDownLocal = e.localPosition;
-      _downQuadId = hitId;
-      if (hitId == null) {
+      _downQuadId = hitId ?? (downOnSelection ? controller.selection.primaryId : null);
+      if (_downQuadId == null) {
         _primarySession = _PrimarySession.downEmpty;
         controller.selection.beginMarquee(world);
       } else {
